@@ -1,0 +1,73 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+1. Technical Stack Rules
+Use JavaScript, NOT TypeScript: All code must be written in JavaScript with React/JSX, not TypeScript.
+File Extensions: Use .jsx for React components and .js for utility files.
+Framework: Build with Expo SDK 52+ and expo-router for navigation.
+Editor Technology: Implement BlockNote.js editor via Expo DOM components for block-based editing.
+Voice Processing: Integrate with Gemini API for voice transcription and intent parsing.
+State Management: Use a React state management solution like Zustand, Redux Toolkit, or React Context.
+2. Architecture & Structure Rules
+Project Organization:
+
+/app: For expo-router screens and navigation
+/components: Reusable UI components
+/services: API calls and business logic
+/hooks: Custom React hooks
+/utils: Helper functions and utilities
+Component Naming:
+
+Use PascalCase for component files (e.g., VoiceInputButton.jsx)
+Use camelCase for utility files (e.g., intentMapper.js)
+3. Implementation Rules
+BlockNote Integration:
+
+Create web component files (e.g., components/Editor.web.jsx) that will render the BlockNote editor and start with the "use dom"; directive at the top.
+Utilize Expo's DOM components feature for seamless integration, ensuring bidirectional communication between React Native and the web component via props (for native-to-web) and useImperativeHandle (for web-to-native method calls).
+Implement a clean voice input UI component with clear feedback states
+Parse voice input via Gemini API to extract intents in proper JSON format
+Map voice intents to editor actions with robust error handling
+Provide visual/audio feedback during voice command processing
+UI/UX Requirements:
+
+Implement a bottom tab navigation with Note Editor, Home, Search, and Profile tabs
+Ensure voice recording button is prominently displayed and accessible
+Create responsive layouts optimized for mobile screens
+Support light/dark theme toggle
+4. Code Quality Rules
+Error Handling: Include robust error handling for API calls, voice recognition, and editor operations
+Comments: Add JSDoc comments for complex functions and components
+Testing: Implement Jest tests for critical functions, especially voice intent parsing
+Performance: Use lazy loading where appropriate, especially on Home screen
+Accessibility: Ensure components have appropriate aria-labels and meet basic accessibility standards
+5. Feature Implementation Rules
+Note Editor: Implement full block-based editing with text, headings, lists, quotes, etc.
+Voice Commands: Support commands for content input, formatting, block manipulation
+Navigation: Implement full sitemap hierarchy as specified in design documents
+Search: Create search functionality with filters for tags, folders, dates, and block types
+6. Development Process Rules
+Break Down Complex Tasks: Divide large features into smaller, manageable sub-tasks
+Test Throughout: Write and run tests for each significant piece of functionality
+Code Review: All generated code must be reviewed for quality and correctness
+Documentation: Document key functions, components, and voice command intents
+7. Mobile-Specific Rules
+Cross-Platform Compatibility: Ensure features work consistently on both iOS and Android
+Native Device Features: Properly request and handle permissions for microphone access
+Performance: Optimize for mobile performance, including minimizing lag during voice input
+description: Guidelines for building DOM components in VoiceNotion using Expo's DOM component feature and BlockNote.js
+alwaysApply: true
+
+DOM Component Development Rules
+Utilize Expo's DOM components feature for rendering web components within React Native screens, ensuring they start with the "use dom"; directive.
+Create web component files (e.g., .jsx) with BlockNote.js for block-based editing functionality.
+Establish bidirectional communication between React Native and the DOM component using props (for native-to-web) and useImperativeHandle (for web-to-native method calls).
+Implement proper loading states and error handling for DOM component content.
+Ensure all components are modular and reusable.
+Adhere to accessibility best practices, including appropriate ARIA attributes and keyboard navigation support.
+Implement responsive design to cater to various screen sizes.
+Maintain consistent styling using a centralized theme or style guide.
+Write unit tests for each component using Jest and React Testing Library.
+Document components with clear comments and usage examples.

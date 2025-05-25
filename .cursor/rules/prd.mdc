@@ -1,0 +1,142 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Project Overview & Product Requirements Document (PRD): VoiceNotion
+
+## 1. Introduction & Vision
+
+**Product Name:** VoiceNotion
+
+**Vision:** To create a seamless, mobile-first note-taking and document creation experience where users can effortlessly capture, structure, and refine their thoughts primarily through voice commands, complemented by a powerful and intuitive block-based editor.
+
+VoiceNotion aims to be the go-to application for users who value speed, efficiency, and the flexibility of voice input, without sacrificing the rich editing capabilities of modern block editors. It is designed for students, professionals, writers, and anyone who needs to quickly jot down ideas, organize notes, or draft documents on the go.
+
+## 2. Goals & Objectives
+
+- **Primary Goal:** Deliver a fully functional mobile application (iOS and Android via Expo) that allows users to create and edit notes using voice commands for all core editor functions (text input, formatting, block manipulation, list creation, etc.).
+- **Voice-First Experience:** Prioritize voice as the primary input method, making it natural and intuitive to interact with the editor.
+- **Rich Editing Capabilities:** Provide a BlockNote.js powered editor that offers a familiar, Notion-like block-based editing experience for manual interaction and refinement.
+- **Mobile-First Design:** Ensure the application is optimized for mobile devices, offering a responsive, clean, and user-friendly interface.
+- **Accurate Transcription & Intent Parsing:** Leverage the Gemini API for high-fidelity voice transcription and intelligent parsing of user intents into actionable editor commands.
+- **Efficient Development:** Utilize Cursor AI as an AI pair programmer to accelerate development cycles and assist in generating code for various components and functionalities.
+- **User-Centric Design:** Focus on a simple, intuitive UI/UX that minimizes friction and enhances productivity.
+
+## 3. Target Audience
+
+- **Students:** For taking lecture notes, organizing research, and drafting assignments quickly.
+- **Professionals & Executives:** For capturing meeting minutes, brainstorming ideas, and drafting communications on the move.
+- **Writers & Content Creators:** For outlining articles, drafting content, and capturing inspiration whenever it strikes.
+- **Individuals with Accessibility Needs:** Offering an alternative input method for those who find typing challenging.
+- **Productivity Enthusiasts:** Users looking for innovative tools to streamline their note-taking and document creation workflows.
+
+## 4. Key Features (Product Requirements)
+
+### 4.1. Core Editor (BlockNote.js based)
+
+- **FR1.1: Block-Based Editing:** Support for various content blocks including paragraphs, headings (H1-H6), bullet lists, numbered lists, to-do lists (checkboxes), quotes, toggle blocks, image blocks, and code blocks. Support for nested blocks within other blocks to create hierarchical content.
+- **FR1.2: Inline Formatting:** Support for bold, italic, underline, strikethrough, inline code, and hyperlinks.
+- **FR1.3: Block Manipulation:** Ability to add, delete, reorder, and nest blocks inside each other to create hierarchical structures. Support for nested pages organization like Notion.
+- **FR1.4: Mobile-Optimized View:** The editor interface must be responsive and easy to use on mobile screens.
+
+### 4.2. Voice Command System (Gemini API powered)
+
+- **FR2.1: Voice Transcription:** Accurate real-time transcription of user speech.
+- **FR2.2: Intent Parsing:** Gemini API integration to parse transcribed text into structured intents and parameters for editor actions (e.g., `{"intent": "APPLY_FORMATTING", "style": "bold"}`).
+- **FR2.3: Comprehensive Voice Control for Editor Functions:**
+  - **Content Input:** Dictate text for paragraphs, headings, list items, etc.
+  - **Inline Formatting:** Apply/remove bold, italic, underline, etc., to selected text or dictated content.
+  - **Block Creation:** Create new paragraphs, headings (specify level), bullet lists, numbered lists, to-do lists, quote blocks.
+  - **Nested Content:** Create and manage nested pages and nested blocks using voice commands.
+  - **List Manipulation:** Start lists, add items, check/uncheck to-do items.
+  - **Basic Navigation/Selection (Voice):** Commands like "select last word," "go to end of line" (stretch goal for MVP).
+  - **Undo/Redo:** Voice commands for undoing and redoing actions.
+- **FR2.4: Voice Activation UI:** A clear and accessible UI element (e.g., floating action button with microphone icon) to activate voice input.
+- **FR2.5: Feedback Mechanism:** Visual and/or auditory feedback for voice command status (listening, processing, success, error).
+
+### 4.3. Application Structure & Navigation
+
+The application follows a structured navigation scheme as outlined below, designed to optimize user experience and provide intuitive access to all features.
+
+#### 4.3.1 Main Navigation (Bottom Tab)
+
+- **FR3.1: Note Editor (Default Screen):** The main screen where users can immediately start typing or recording voice notes, which are transcribed and converted into blocks. Features the BlockNote editor and voice command UI.
+- **FR3.2: Home Screen:** Shows folders, recent notes, pinned items, and categories. Acts like a Notion-style dashboard with support for nested pages structure.
+- **FR3.3: Search Screen:** A dedicated screen allowing users to search across notes using text or voice input. Provides filters by tag, folder, type, date, etc.
+- **FR3.4: Profile Screen:** Contains profile information, settings, backup, and help options.
+
+#### 4.3.2 Note Editor Area
+
+- **FR3.5: NoteEditorScreen:** Typing area with formatting options, voice record button, block formatting toolbar (text, todo, heading, quote, toggle, image, etc.), support for nested blocks and nested pages like Notion, and save/discard/share options.
+- **FR3.6: VoiceResultScreen:** Displays voice-to-text output before saving as note blocks.
+
+#### 4.3.3 Home Area
+
+- **FR3.7: HomeScreen:** Includes pinned notes section, recent notes, folders/categories/tags, and quick actions (new note, import, new folder).
+- **FR3.8: FolderViewScreen:** Lists notes under selected folder with folder management options (rename, delete, share).
+- **FR3.9: NoteDetailScreen:** View and edit individual note with support for block editing and nested pages.
+
+#### 4.3.4 Search Area
+
+- **FR3.10: SearchScreen:** Features search bar with voice input support, filters (tag, folder, date, block type), and recent searches.
+- **FR3.11: SearchResultScreen:** Shows highlighted keyword matches with options to jump to or edit results.
+
+#### 4.3.5 Profile Area
+
+- **FR3.12: ProfileScreen:** Displays username, email, profile photo, theme toggle (dark/light), and app version.
+- **FR3.13: SettingsScreen:** Includes backup & sync, notifications, accessibility, and voice command configuration options.
+- **FR3.14: HelpScreen:** Contains FAQ, contact support, and privacy policy & terms of service.
+- **FR3.15: AccountScreen:** Provides options to manage subscription (if any), sign out, and delete account.
+
+## 5. Technology Stack
+
+The development of VoiceNotion will utilize a modern, cross-platform technology stack chosen for its capabilities in mobile development, AI integration, and rich text editing:
+
+- **Mobile Development Framework:**
+  - **Expo SDK (Version 52+):** Chosen for its rapid JavaScript development capabilities, extensive library of native modules, and simplified build/deployment process for React Native applications. Expo allows for a managed workflow, OTA updates, and easy access to native device features.
+- **Rich Text Editor:**
+  - **BlockNote.js:** A block-based JavaScript React rich text editor. It offers a Notion-like editing experience out-of-the-box and is built on Tiptap/ProseMirror, providing a robust and extensible foundation.
+  - **Integration via WebView:** BlockNote.js, being a web-based editor, will be integrated into the Expo (React Native) application using `react-native-webview` with bidirectional communication via the `postMessage` API. This approach offers true cross-platform compatibility (iOS, Android, and web) and provides a clean separation between native and web code, allowing for robust error handling and loading states. The WebView will load HTML content that includes the BlockNote editor initialized with CDN imports.
+- **Voice Command Processing:**
+  - **Gemini API (Google):** Utilized for its advanced Natural Language Understanding (NLU) capabilities. Voice input captured on the device will be sent to the Gemini API to parse user intent, extract entities, and determine the desired editing actions.
+- **AI-Assisted Development:**
+  - **Cursor AI:** Employed as an AI pair programmer to accelerate JavaScript development tasks, generate boilerplate code, assist with complex logic, and help in crafting specific components or functions based on detailed prompts.
+- **State Management (Implicit):**
+  - A suitable JavaScript React state management library (e.g., Zustand, Redux Toolkit, or React Context) will be used as needed to manage application state, editor content, and voice command processing states.
+- **Testing Frameworks (Implicit):**
+  - **Jest:** For unit and integration testing of JavaScript components, utility functions, and voice intent parsing logic.
+  - **React Native Testing Library / Detox:** For end-to-end testing of the JavaScript application flow and UI interactions on mobile devices.
+
+## 6. Non-Functional Requirements
+
+- **NFR5.1: Performance:** The app should be responsive, with minimal lag during voice input, transcription, and editor operations.
+- **NFR5.2: Usability:** The UI should be intuitive, especially the voice interaction flow. Minimal learning curve.
+- **NFR5.3: Reliability:** Voice commands should be consistently understood and executed correctly. Editor functions should be stable.
+- **NFR5.4: Mobile-First Responsiveness:** Layouts and interactions must be optimized for various mobile screen sizes.
+- **NFR5.5: Accessibility (Basic):** Clear visual hierarchy, sufficient contrast, and consideration for voice-only interaction.
+
+## 7. Success Metrics
+
+- **User Adoption:** Number of downloads and active users.
+- **Engagement:** Average session duration, number of notes created per user.
+- **Voice Feature Usage:** Percentage of editing actions performed via voice versus manual input.
+- **Task Completion Rate:** Users successfully creating and formatting notes using voice commands.
+- **User Satisfaction:** App store ratings, user reviews, and feedback surveys.
+- **Error Rates:** Low error rates in voice transcription and intent parsing.
+
+## 8. Future Considerations (Post-MVP)
+
+- Advanced voice commands (e.g., search within a note, create tables, insert images via voice description).
+- Cloud synchronization of notes across devices.
+- Collaboration features.
+- Customizable voice command shortcuts.
+- Integration with other services (e.g., calendar, task managers).
+- Offline voice command processing (limited scope).
+- Advanced editor blocks and templates.
+- Additional UX improvements:
+  - Gesture navigation (e.g., swipe to archive)
+  - Lazy loading for performance on Home
+  - AI-assisted organization and tagging
+
+This PRD will guide the design and development process for VoiceNotion, ensuring all stakeholders have a clear understanding of the project's scope, goals, and requirements.
