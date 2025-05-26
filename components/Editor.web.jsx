@@ -25,6 +25,7 @@ import {
   useState,
   forwardRef,
   useImperativeHandle,
+  useCallback,
 } from "react";
 import { selectionDisablerScript } from "./selectionDisabler";
 import KeyboardToolbar from "./KeyboardToolbar";
@@ -217,11 +218,13 @@ const HelloWorld = forwardRef((props, ref) => {
     keyboardHeight = 0,
     isKeyboardVisible = false,
     currentPageId, // Current page ID for page operations
+    nestedPages = [], // Array of nested pages for the current page
   } = props;
 
   // Use a ref to track whether component is mounted
   const isMountedRef = useRef(false);
   const editorInstance = useRef(null);
+  const [contentInitialized, setContentInitialized] = useState(false);
 
   // Creates a new editor instance with custom settings
   const editor = useCreateBlockNote({
@@ -263,6 +266,62 @@ const HelloWorld = forwardRef((props, ref) => {
     },
   });
 
+  // State for dialog to create a new page
+  const [showCreatePageDialog, setShowCreatePageDialog] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [pageToDelete, setPageToDelete] = useState(null);
+
+  // Function to check if any page links were deleted and delete the corresponding pages
+  const checkForDeletedPageLinks = useCallback(() => {
+    if (!editor || !nestedPages || nestedPages.length === 0) return;
+
+    // Get all page link blocks currently in the editor
+    const currentPageLinks = [];
+    const allBlocks = editor.topLevelBlocks;
+
+    // Collect all page link blocks
+    allBlocks.forEach((block) => {
+      if (block.type === "pageLink") {
+        currentPageLinks.push(block.props.pageId);
+      }
+    });
+
+    // Find pages that exist in nestedPages but not in the editor (they were deleted)
+    const deletedPageIds = nestedPages
+      .filter((page) => !currentPageLinks.includes(page.id))
+      .map((page) => page.id);
+
+    // Delete these pages if any were found
+    if (deletedPageIds.length > 0) {
+      console.log("Detected deleted page link blocks:", deletedPageIds);
+      deletedPageIds.forEach((pageId) => {
+        if (onDeletePage) {
+          console.log("Deleting page due to removed page link:", pageId);
+          onDeletePage(pageId, false); // The 'false' flag indicates this is from block deletion
+        }
+      });
+    }
+  }, [editor, nestedPages, onDeletePage]);
+
+  // Add the change handler to the editor instance
+  useEffect(() => {
+    if (editor && onChange) {
+      // Set up the change handler on the editor instance
+      const unsubscribe = editor.onChange(() => {
+        // Check if any page link blocks were deleted
+        checkForDeletedPageLinks();
+
+        // Call the onChange handler with the latest content
+        onChange(editor.topLevelBlocks);
+      });
+
+      // Cleanup when component unmounts
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, [editor, onChange, checkForDeletedPageLinks]);
+
   // Store the navigation callback in the editor's storage
   useEffect(() => {
     if (editor && onNavigateToPage) {
@@ -275,9 +334,93 @@ const HelloWorld = forwardRef((props, ref) => {
     }
   }, [editor, onNavigateToPage]);
 
-  // State for dialog to create a new page
-  const [showCreatePageDialog, setShowCreatePageDialog] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // Effect to add page link blocks for nested pages when the editor is initialized
+  useEffect(() => {
+    if (!editor || !nestedPages) return;
+
+    console.log(
+      `Validating page links - ${nestedPages.length} nested pages available`
+    );
+
+    // If we have nested pages and initialContent, let's check if we need to add page links
+    if (nestedPages.length > 0 && editor.topLevelBlocks) {
+      console.log("Checking for missing page links...");
+
+      // Get existing page link blocks
+      const existingPageLinkIds = [];
+      const existingPageLinkBlocks = [];
+      const invalidPageLinkBlocks = [];
+
+      editor.topLevelBlocks.forEach((block) => {
+        if (block.type === "pageLink") {
+          // Check if this is a valid link (matches a nested page)
+          const matchingPage = nestedPages.find(
+            (page) => page.id === block.props.pageId
+          );
+
+          if (matchingPage) {
+            // This is a valid page link
+            existingPageLinkIds.push(block.props.pageId);
+            existingPageLinkBlocks.push(block);
+          } else {
+            // This is an invalid page link that doesn't match any nested page
+            console.log(
+              `Found invalid page link to ${block.props.pageId} (${block.props.pageTitle})`
+            );
+            invalidPageLinkBlocks.push(block);
+          }
+        }
+      });
+
+      // Remove invalid page link blocks
+      if (invalidPageLinkBlocks.length > 0) {
+        console.log(
+          `Removing ${invalidPageLinkBlocks.length} invalid page link blocks`
+        );
+        editor.removeBlocks(invalidPageLinkBlocks);
+      }
+
+      // Only add missing page links if we haven't initialized content yet
+      if (!contentInitialized) {
+        // Find pages that don't have corresponding page link blocks
+        const missingPageLinks = nestedPages.filter(
+          (page) => !existingPageLinkIds.includes(page.id)
+        );
+
+        if (missingPageLinks.length > 0) {
+          console.log("Found missing page links:", missingPageLinks.length);
+
+          // Add missing page link blocks
+          const lastBlock =
+            editor.topLevelBlocks.length > 0
+              ? editor.topLevelBlocks[editor.topLevelBlocks.length - 1]
+              : null;
+
+          const newBlocks = missingPageLinks.map((page) => ({
+            type: "pageLink",
+            props: {
+              pageId: page.id,
+              pageTitle: page.title || "Untitled Page",
+              pageIcon: page.icon || "📄",
+            },
+          }));
+
+          if (newBlocks.length > 0) {
+            if (lastBlock) {
+              // Insert after the last block
+              editor.insertBlocks(newBlocks, lastBlock, "after");
+            } else {
+              // If there are no blocks, insert at the beginning
+              editor.insertBlocks(newBlocks, null, "firstChild");
+            }
+            console.log("Added missing page links:", newBlocks.length);
+          }
+        }
+
+        setContentInitialized(true);
+      }
+    }
+  }, [editor, nestedPages, contentInitialized]);
 
   // Expose methods to the native side
   useImperativeHandle(ref, () => ({
@@ -295,7 +438,63 @@ const HelloWorld = forwardRef((props, ref) => {
     // Method to delete the current page
     deleteCurrentPage: () => {
       if (currentPageId && onDeletePage) {
+        setPageToDelete(currentPageId);
         setShowDeleteConfirm(true);
+      }
+    },
+
+    // Method to remove a page link block when page is deleted from elsewhere
+    removePageLink: (pageId) => {
+      if (editor && pageId) {
+        console.log("Removing page link for deleted page:", pageId);
+
+        // Find all page link blocks with this pageId
+        const blocksToRemove = [];
+        editor.topLevelBlocks.forEach((block) => {
+          if (block.type === "pageLink" && block.props.pageId === pageId) {
+            blocksToRemove.push(block);
+          }
+        });
+
+        // Remove the blocks if any were found
+        if (blocksToRemove.length > 0) {
+          editor.removeBlocks(blocksToRemove);
+          console.log("Removed page link blocks:", blocksToRemove.length);
+
+          // Ensure changes are saved immediately
+          if (onChange) {
+            onChange(editor.topLevelBlocks);
+          }
+        }
+      }
+    },
+
+    // Method to remove multiple page link blocks at once
+    removePageLinks: (pageIds) => {
+      if (editor && pageIds && pageIds.length > 0) {
+        console.log("Removing multiple page links:", pageIds.length);
+
+        // Find all page link blocks with matching pageIds
+        const blocksToRemove = [];
+        editor.topLevelBlocks.forEach((block) => {
+          if (
+            block.type === "pageLink" &&
+            pageIds.includes(block.props.pageId)
+          ) {
+            blocksToRemove.push(block);
+          }
+        });
+
+        // Remove the blocks if any were found
+        if (blocksToRemove.length > 0) {
+          editor.removeBlocks(blocksToRemove);
+          console.log("Removed page link blocks:", blocksToRemove.length);
+
+          // Ensure changes are saved immediately
+          if (onChange) {
+            onChange(editor.topLevelBlocks);
+          }
+        }
       }
     },
   }));
@@ -341,6 +540,11 @@ const HelloWorld = forwardRef((props, ref) => {
       }, 100);
 
       console.log("Page link inserted for page:", pageId);
+
+      // Ensure changes are saved immediately
+      if (onChange) {
+        onChange(editor.topLevelBlocks);
+      }
     } catch (error) {
       console.error("Error inserting page link:", error);
       // Don't rethrow - just log the error
@@ -405,10 +609,11 @@ const HelloWorld = forwardRef((props, ref) => {
 
   // Handle deleting the current page
   const handleDeleteCurrentPage = () => {
-    if (onDeletePage && currentPageId) {
-      onDeletePage(currentPageId);
+    if (onDeletePage && pageToDelete) {
+      onDeletePage(pageToDelete, true); // The 'true' flag indicates this is a user-initiated deletion
     }
     setShowDeleteConfirm(false);
+    setPageToDelete(null);
   };
 
   // Render keyboard toolbar when keyboard is visible
@@ -527,7 +732,7 @@ const HelloWorld = forwardRef((props, ref) => {
 
   // Renders the editor instance using a React component
   return (
-    <div style={{ height: "100%" }}>
+    <div style={{ height: "100%", width: "100%" }}>
       <BlockNoteView
         editor={editor}
         editable={true}

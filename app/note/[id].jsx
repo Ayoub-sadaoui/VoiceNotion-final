@@ -34,6 +34,8 @@ export default function NoteScreen() {
     deletePage,
     loading: storageLoading,
     error,
+    getChildrenOfPage,
+    loadAllPages,
   } = usePageStorage();
 
   // Local state
@@ -46,6 +48,7 @@ export default function NoteScreen() {
   const [icon, setIcon] = useState("📄");
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [nestedPages, setNestedPages] = useState([]);
 
   // Listen for keyboard events
   useEffect(() => {
@@ -170,6 +173,95 @@ export default function NoteScreen() {
       isMounted = false;
     };
   }, [id, getPageById, router]);
+
+  // Load nested pages
+  const loadNestedPages = useCallback(async () => {
+    if (!currentPage || !currentPage.id) return;
+
+    try {
+      const childPages = await getChildrenOfPage(currentPage.id);
+      console.log(
+        `Loaded ${childPages.length} nested pages for ${currentPage.id}:`
+      );
+      // Print details of the child pages for debugging
+      childPages.forEach((page) => {
+        console.log(
+          `  - Page ID: ${page.id}, Title: ${page.title}, ParentID: ${page.parentId}`
+        );
+      });
+
+      setNestedPages(childPages);
+
+      // If we have the editor content, check for any page links that don't belong
+      if (editorRef.current && editorContent) {
+        // Get all page links in the current content
+        const pageLinkBlocks = [];
+        editorContent.forEach((block) => {
+          if (block.type === "pageLink") {
+            pageLinkBlocks.push({
+              id: block.id,
+              pageId: block.props.pageId,
+              pageTitle: block.props.pageTitle,
+            });
+          }
+        });
+
+        console.log(
+          `Found ${pageLinkBlocks.length} page link blocks in editor content:`
+        );
+
+        // Collect IDs of page links that don't match any child page
+        const invalidLinkIds = [];
+
+        pageLinkBlocks.forEach((link) => {
+          console.log(
+            `  - Block ID: ${link.id}, Links to Page: ${link.pageId}, Title: ${link.pageTitle}`
+          );
+          // Check if this link corresponds to a child page
+          const matchingChild = childPages.find(
+            (page) => page.id === link.pageId
+          );
+          if (!matchingChild) {
+            console.log(
+              `    WARNING: This link does not match any child page of ${currentPage.id}`
+            );
+            invalidLinkIds.push(link.pageId);
+          }
+        });
+
+        // If we found invalid links, clean them up
+        if (invalidLinkIds.length > 0) {
+          console.log(
+            `Cleaning up ${invalidLinkIds.length} invalid page links`
+          );
+
+          // Remove the invalid page links
+          if (editorRef.current.removePageLinks) {
+            editorRef.current.removePageLinks(invalidLinkIds);
+          } else {
+            // Fallback to removing one by one
+            invalidLinkIds.forEach((pageId) => {
+              if (editorRef.current.removePageLink) {
+                editorRef.current.removePageLink(pageId);
+              }
+            });
+          }
+
+          // Force a save to update the content
+          handleSave();
+        }
+      }
+    } catch (err) {
+      console.error("Error loading nested pages:", err);
+    }
+  }, [currentPage, getChildrenOfPage, editorContent, handleSave]);
+
+  // Effect to load nested pages when current page changes
+  useEffect(() => {
+    if (currentPage && currentPage.id) {
+      loadNestedPages();
+    }
+  }, [currentPage, loadNestedPages]);
 
   // Handle editor content changes with debounce
   const debouncedSave = useCallback(
@@ -350,25 +442,103 @@ export default function NoteScreen() {
   };
 
   // Handle deleting the current page
-  const handleDeletePage = async (pageId) => {
+  const handleDeletePage = async (pageId, isUserInitiated = true) => {
     try {
-      if (!pageId || !currentPage) return;
+      if (!pageId) return;
 
-      const parentId = currentPage.parentId;
+      console.log(
+        `Deleting page: ${pageId}, user initiated: ${isUserInitiated}`
+      );
+
+      // If this is the current page, we need to navigate away
+      const isCurrentPage = pageId === currentPage?.id;
+      const parentId = currentPage?.parentId;
+
+      // Get all pages that will be deleted (this page and its descendants)
+      const allPages = await loadAllPages();
+      const pagesToDelete = collectPageAndDescendants(allPages, pageId);
+
+      console.log(
+        `Deleting page ${pageId} and ${pagesToDelete.length - 1} descendants`
+      );
+
+      // Delete the page from storage
       const result = await deletePage(pageId);
 
       if (result) {
         console.log("Page deleted successfully");
-        // Navigate to parent page or home
-        if (parentId) {
-          router.replace(`/note/${parentId}`);
+
+        // If this was triggered by block deletion in the editor (not user initiated)
+        // and it's not the current page, we don't need to navigate
+        if (!isUserInitiated && !isCurrentPage) {
+          // Refresh nested pages
+          loadNestedPages();
+          return;
+        }
+
+        // For user-initiated deletion or if we're deleting the current page
+        if (isCurrentPage) {
+          // Navigate to parent page or home
+          if (parentId) {
+            router.replace(`/note/${parentId}`);
+          } else {
+            router.replace("/");
+          }
         } else {
-          router.replace("/");
+          // Remove the page link block from the editor
+          if (editorRef.current) {
+            // Get IDs of all pages being deleted (including descendants)
+            const pageIdsToRemove = pagesToDelete.map((page) => page.id);
+
+            // Remove all page links at once if the new method is available
+            if (editorRef.current.removePageLinks) {
+              editorRef.current.removePageLinks(pageIdsToRemove);
+            } else {
+              // Fallback to removing one by one
+              editorRef.current.removePageLink(pageId);
+
+              // If there are descendants, remove their page links too
+              if (pagesToDelete.length > 1) {
+                pagesToDelete.forEach((page) => {
+                  if (page.id !== pageId) {
+                    editorRef.current.removePageLink(page.id);
+                  }
+                });
+              }
+            }
+          }
+
+          // Refresh nested pages
+          loadNestedPages();
         }
       }
     } catch (err) {
       console.error("Error deleting page:", err);
     }
+  };
+
+  // Helper function to collect a page and all its descendants
+  const collectPageAndDescendants = (pages, rootId) => {
+    const result = [];
+
+    // Find the root page first
+    const rootPage = pages.find((page) => page.id === rootId);
+    if (rootPage) {
+      result.push(rootPage);
+    }
+
+    // Recursive function to find all children
+    const findChildren = (parentId) => {
+      const childrenPages = pages.filter((page) => page.parentId === parentId);
+
+      childrenPages.forEach((child) => {
+        result.push(child);
+        findChildren(child.id);
+      });
+    };
+
+    findChildren(rootId);
+    return result;
   };
 
   // Handle creating a nested page
@@ -510,6 +680,7 @@ export default function NoteScreen() {
             currentPageId={currentPage.id}
             onCreateNestedPage={handleCreateNestedPage}
             onDeletePage={handleDeletePage}
+            nestedPages={nestedPages}
           />
         ) : (
           <View style={styles.loadingContainer}>
