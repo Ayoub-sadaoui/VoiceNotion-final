@@ -7,6 +7,8 @@ import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { ThemeProvider, useTheme } from "../utils/themeContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Animated } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import Toast from "react-native-toast-message";
 
 // Prevent the splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -84,10 +86,13 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-        <RootLayoutNav />
-      </View>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+          <RootLayoutNav />
+        </View>
+        <Toast />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

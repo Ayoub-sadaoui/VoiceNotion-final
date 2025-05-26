@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,112 +6,436 @@ import {
   SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "../../utils/themeContext";
-import { notes } from "../../utils/mockData";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import usePageStorage from "../../hooks/usePageStorage";
+import HelloWorld from "../../components/Editor.web";
+import debounce from "lodash.debounce";
 
-export default function NoteDetailScreen() {
-  const { theme } = useTheme();
+export default function NoteScreen() {
+  const { theme, isDark } = useTheme();
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
+  const editorRef = useRef(null);
 
-  const [note, setNote] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [voiceState, setVoiceState] = useState("idle");
+  // Get page storage functionality
+  const {
+    getPageById,
+    savePage,
+    createNewPage,
+    deletePage,
+    loading: storageLoading,
+    error,
+  } = usePageStorage();
 
-  // Fetch note data
+  // Local state
+  const [currentPage, setCurrentPage] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editorContent, setEditorContent] = useState(null);
+  const [initialContent, setInitialContent] = useState(null);
+  const [title, setTitle] = useState("");
+  const [icon, setIcon] = useState("📄");
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  // Listen for keyboard events
   useEffect(() => {
-    // Simulate API call
-    const fetchNote = async () => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      (e) => {
+        // Get keyboard height from event
+        const keyboardHeight = e.endCoordinates.height;
+        console.log("Keyboard height:", keyboardHeight);
+        setKeyboardHeight(keyboardHeight);
+        setIsKeyboardVisible(true);
+      }
+    );
+
+    const keyboardDidHideListener = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => {
+        setKeyboardHeight(0);
+        setIsKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
+
+  // Load the current page
+  useEffect(() => {
+    let isMounted = true; // Track if component is mounted
+
+    const loadPage = async () => {
+      if (!id) {
+        console.error("No ID parameter provided to note page");
+        return;
+      }
+
       try {
-        // Find note by ID from mock data
-        const foundNote = notes.find((n) => n.id === id);
-        if (foundNote) {
-          setNote(foundNote);
+        setIsLoading(true); // Start loading
+        setIsSaving(false); // Reset saving state
+
+        const page = await getPageById(id);
+        console.log("Page data retrieved:", page ? "Found" : "Not found");
+
+        if (!isMounted) return; // Don't update state if unmounted
+
+        if (page) {
+          setCurrentPage(page);
+          setTitle(page.title || "Untitled Page");
+          setIcon(page.icon || "📄");
+
+          try {
+            // Parse the contentJson into an object for the editor
+            const contentJson = page.contentJson || "{}";
+            console.log(
+              "Content JSON string:",
+              contentJson.substring(0, 50) +
+                (contentJson.length > 50 ? "..." : "")
+            );
+
+            const parsedContent =
+              contentJson && contentJson !== "{}"
+                ? JSON.parse(contentJson)
+                : [
+                    {
+                      type: "heading",
+                      props: {
+                        textColor: "default",
+                        backgroundColor: "default",
+                        textAlignment: "left",
+                        level: 1,
+                      },
+                      content: [
+                        {
+                          type: "text",
+                          text: page.title || "Untitled Page",
+                          styles: {},
+                        },
+                      ],
+                      children: [],
+                    },
+                  ];
+
+            console.log(
+              "Content parsed successfully. Top level blocks:",
+              parsedContent.length
+            );
+            setInitialContent(parsedContent);
+          } catch (err) {
+            console.error("Error parsing page content:", err);
+            // Set fallback content on parse error
+            setInitialContent([
+              {
+                type: "paragraph",
+                props: { textAlignment: "left" },
+                content: [
+                  { type: "text", text: "Error loading content", styles: {} },
+                ],
+                children: [],
+              },
+            ]);
+          }
+          setIsLoading(false); // Finished loading
         } else {
-          // Note not found
-          console.error("Note not found:", id);
+          // Page not found - redirect to home
+          console.error("Page not found for ID:", id);
+          router.replace("/");
         }
-      } catch (error) {
-        console.error("Error fetching note:", error);
-      } finally {
-        setLoading(false);
+      } catch (err) {
+        if (isMounted) {
+          console.error("Error loading page:", err);
+          router.replace("/");
+        }
       }
     };
 
-    fetchNote();
-  }, [id]);
+    loadPage();
 
-  // Handle voice input
-  const handleVoiceInput = () => {
-    if (voiceState === "idle") {
-      setVoiceState("listening");
+    // Cleanup function to prevent state updates after unmount
+    return () => {
+      isMounted = false;
+    };
+  }, [id, getPageById, router]);
 
-      // Simulate processing
-      setTimeout(() => {
-        setVoiceState("processing");
-        setTimeout(() => {
-          setVoiceState("idle");
-        }, 1500);
-      }, 2000);
-    } else if (voiceState === "listening") {
-      setVoiceState("idle");
+  // Handle editor content changes with debounce
+  const debouncedSave = useCallback(
+    debounce(async (content) => {
+      if (!currentPage) {
+        console.warn("Cannot auto-save: No page loaded");
+        return;
+      }
+
+      console.log("Auto-saving changes for page:", currentPage.id);
+      setIsSaving(true);
+
+      try {
+        const contentJsonString = JSON.stringify(content);
+        const updatedPage = {
+          ...currentPage,
+          contentJson: contentJsonString,
+          title: title,
+          icon: icon,
+          updatedAt: Date.now(),
+        };
+
+        const savedPage = await savePage(updatedPage);
+        console.log("Auto-save completed successfully");
+        setCurrentPage(savedPage);
+      } catch (err) {
+        console.error("Error during auto-save:", err);
+      } finally {
+        setIsSaving(false);
+      }
+    }, 1000),
+    [currentPage, savePage, title, icon]
+  );
+
+  // Handle content change from editor
+  const handleEditorContentChange = useCallback(
+    (content) => {
+      if (!content) {
+        console.warn("Received empty content from editor");
+        return;
+      }
+
+      // Log content change for debugging
+      if (Array.isArray(content)) {
+        console.log(
+          `Editor content changed: ${content.length} top-level blocks`
+        );
+      } else {
+        console.log(
+          "Editor content changed but format is unexpected:",
+          typeof content
+        );
+      }
+
+      setEditorContent(content);
+      debouncedSave(content);
+    },
+    [debouncedSave]
+  );
+
+  // Create and navigate to a new nested page
+  const handleInsertNestedPage = async () => {
+    try {
+      setIsSaving(true);
+      // Create new page with current page as parent
+      const newPage = await createNewPage(currentPage.id, "New Page", "📄");
+      console.log("Created nested page:", newPage.id);
+
+      // Insert a page link in the current editor
+      if (editorRef.current) {
+        try {
+          editorRef.current.insertPageLink(
+            newPage.id,
+            newPage.title,
+            newPage.icon
+          );
+          console.log("Page link inserted successfully");
+
+          // Save the current page with the new link
+          await handleSave();
+
+          // Show success message
+          // You could add a toast or alert here
+        } catch (insertError) {
+          console.error("Error inserting page link:", insertError);
+        }
+      }
+
+      setIsSaving(false);
+
+      // OPTIONAL: Navigate to the new page (comment this out if you want to stay on current page)
+      // router.push(`/note/${newPage.id}`);
+    } catch (err) {
+      console.error("Error creating nested page:", err);
+      setIsSaving(false);
     }
   };
 
-  // Handle going back
-  const handleBack = () => {
-    router.back();
+  // Handle navigation when a page link is clicked
+  const handleNavigateToPage = (pageId) => {
+    if (pageId) {
+      // Save current page before navigating
+      handleSave().then(() => {
+        router.push(`/note/${pageId}`);
+      });
+    }
   };
 
-  // Format content for display
-  const formatContent = (content) => {
-    return content.split("\n").map((line, index) => (
-      <Text key={index} style={[styles.contentText, { color: theme.text }]}>
-        {line}
-      </Text>
-    ));
+  // Handle back button
+  const handleGoBack = () => {
+    // Save changes before navigating
+    handleSave().then(() => {
+      if (currentPage?.parentId) {
+        // Navigate to parent page if it exists
+        router.push(`/note/${currentPage.parentId}`);
+      } else {
+        // Otherwise go back to the previous screen
+        router.back();
+      }
+    });
   };
 
-  if (loading) {
+  // Handle forced save (e.g., when leaving the page)
+  const handleSave = async () => {
+    if (!currentPage) {
+      console.warn("Cannot save: No page loaded");
+      return false;
+    }
+
+    if (!editorContent) {
+      console.warn("Cannot save: No editor content available");
+      return true; // Not a critical error, content might just be empty
+    }
+
+    setIsSaving(true);
+    try {
+      console.log("Saving page content:", currentPage.id);
+
+      // Safely stringify the content
+      let contentJsonString;
+      try {
+        contentJsonString = JSON.stringify(editorContent);
+        console.log(
+          "Content serialized successfully, length:",
+          contentJsonString.length
+        );
+      } catch (serializeErr) {
+        console.error("Error serializing content:", serializeErr);
+        return false;
+      }
+
+      const updatedPage = {
+        ...currentPage,
+        contentJson: contentJsonString,
+        title: title,
+        icon: icon,
+        updatedAt: Date.now(),
+      };
+
+      const savedPage = await savePage(updatedPage);
+      console.log("Page saved successfully:", savedPage.id);
+      setCurrentPage(savedPage);
+      return true;
+    } catch (err) {
+      console.error("Error saving page:", err);
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle title change with automatic saving
+  const handleTitleChange = (newTitle) => {
+    setTitle(newTitle);
+    if (currentPage) {
+      debouncedSave(editorContent || initialContent);
+    }
+  };
+
+  // Handle deleting the current page
+  const handleDeletePage = async (pageId) => {
+    try {
+      if (!pageId || !currentPage) return;
+
+      const parentId = currentPage.parentId;
+      const result = await deletePage(pageId);
+
+      if (result) {
+        console.log("Page deleted successfully");
+        // Navigate to parent page or home
+        if (parentId) {
+          router.replace(`/note/${parentId}`);
+        } else {
+          router.replace("/");
+        }
+      }
+    } catch (err) {
+      console.error("Error deleting page:", err);
+    }
+  };
+
+  // Handle creating a nested page
+  const handleCreateNestedPage = async (title, icon) => {
+    try {
+      if (!currentPage || !currentPage.id) {
+        console.error("Cannot create nested page: Invalid current page");
+        return Promise.reject(new Error("Invalid current page"));
+      }
+
+      // Create new page with current page as parent
+      const newPage = await createNewPage(
+        currentPage.id,
+        title || "New Page",
+        icon || "📄"
+      );
+
+      console.log("Successfully created nested page:", newPage.id);
+
+      // Return the created page so Editor.web can use it
+      return newPage;
+    } catch (err) {
+      console.error("Error creating nested page:", err);
+      // Re-throw the error so it can be caught by the caller
+      return Promise.reject(err);
+    }
+  };
+
+  if (storageLoading || isLoading) {
     return (
       <SafeAreaView
         style={[styles.container, { backgroundColor: theme.background }]}
       >
-        <Stack.Screen options={{ headerShown: false }} />
+        <Stack.Screen
+          options={{
+            headerShown: false,
+          }}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.primary} />
           <Text style={[styles.loadingText, { color: theme.secondaryText }]}>
-            Loading note...
+            Loading page...
           </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (!note) {
+  if (!currentPage) {
     return (
       <SafeAreaView
         style={[styles.container, { backgroundColor: theme.background }]}
       >
-        <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Ionicons name="arrow-back" size={24} color={theme.text} />
-          </TouchableOpacity>
-        </View>
+        <Stack.Screen
+          options={{
+            headerShown: false,
+          }}
+        />
         <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={48} color={theme.error} />
-          <Text style={[styles.errorText, { color: theme.text }]}>
-            Note not found
+          <Text style={[styles.errorText, { color: theme.error || "red" }]}>
+            Error: Page not found
           </Text>
           <TouchableOpacity
-            style={[styles.returnButton, { backgroundColor: theme.primary }]}
-            onPress={handleBack}
+            style={[styles.errorButton, { backgroundColor: theme.primary }]}
+            onPress={() => router.replace("/")}
           >
-            <Text style={styles.returnButtonText}>Return to Home</Text>
+            <Text style={styles.errorButtonText}>Return to Home</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -119,72 +443,173 @@ export default function NoteDetailScreen() {
   }
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.background }]}
-    >
-      <Stack.Screen options={{ headerShown: false }} />
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <Stack.Screen
+        options={{
+          headerShown: false,
+        }}
+      />
 
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
-        </TouchableOpacity>
+      {/* Back button */}
+      <TouchableOpacity
+        style={[
+          styles.backButton,
+          { backgroundColor: theme.surface || "#F2F2F7" },
+        ]}
+        onPress={handleGoBack}
+      >
+        <Ionicons name="arrow-back" size={24} color={theme.text} />
+      </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="ellipsis-horizontal" size={24} color={theme.text} />
-        </TouchableOpacity>
+      {/* Save indicator */}
+      {isSaving && (
+        <View style={styles.savingIndicator}>
+          <ActivityIndicator size="small" color={theme.secondary} />
+          <Text style={[styles.savingText, { color: theme.secondaryText }]}>
+            Saving...
+          </Text>
+        </View>
+      )}
+
+      {/* Title area */}
+      <View style={styles.titleContainer}>
+        <Text style={[styles.iconDisplay, { color: theme.text }]}>{icon}</Text>
+
+        <TextInput
+          style={[
+            styles.titleInput,
+            {
+              color: theme.text,
+              borderBottomColor: `${theme.text}20`,
+            },
+          ]}
+          value={title}
+          onChangeText={handleTitleChange}
+          placeholder="Note Title"
+          placeholderTextColor={theme.secondaryText || "#999"}
+          maxLength={100}
+        />
       </View>
 
-      <View style={styles.noteContainer}>
-        <Text style={[styles.noteTitle, { color: theme.text }]}>
-          {note.title}
-        </Text>
-
-        {note.tags && note.tags.length > 0 && (
-          <View style={styles.tagsContainer}>
-            {note.tags.map((tag, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.tag,
-                  {
-                    backgroundColor: theme.chip.background,
-                    borderColor: theme.border,
-                  },
-                ]}
-              >
-                <Text style={[styles.tagText, { color: theme.primary }]}>
-                  #{tag}
-                </Text>
-              </View>
-            ))}
+      {/* Editor */}
+      <KeyboardAvoidingView
+        style={styles.editorContainer}
+        behavior={Platform.OS === "ios" ? "padding" : null}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      >
+        {initialContent ? (
+          <HelloWorld
+            ref={editorRef}
+            title={title}
+            icon={icon}
+            initialContent={initialContent}
+            onChange={handleEditorContentChange}
+            onNavigateToPage={handleNavigateToPage}
+            keyboardHeight={keyboardHeight}
+            isKeyboardVisible={isKeyboardVisible}
+            currentPageId={currentPage.id}
+            onCreateNestedPage={handleCreateNestedPage}
+            onDeletePage={handleDeletePage}
+          />
+        ) : (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={theme.secondary} />
+            <Text style={[styles.loadingText, { color: theme.secondaryText }]}>
+              Preparing editor...
+            </Text>
           </View>
         )}
+      </KeyboardAvoidingView>
 
-        <View style={styles.contentContainer}>
-          {formatContent(note.content)}
-        </View>
-
-        <Text style={[styles.dateText, { color: theme.tertiaryText }]}>
-          Last edited: {new Date(note.updatedAt).toLocaleString()}
-        </Text>
-      </View>
-
-      <View style={[styles.footer, { borderTopColor: theme.border }]}>
+      {/* Debug button in dev mode */}
+      {__DEV__ && (
         <TouchableOpacity
-          style={[styles.editButton, { backgroundColor: theme.primary }]}
-          onPress={() => router.push(`/editor?noteId=${note.id}`)}
+          style={[styles.debugButton, { backgroundColor: theme.primary }]}
+          onPress={() => {
+            const debugInfo = {
+              pageId: currentPage.id,
+              parentId: currentPage.parentId,
+              title: title,
+              icon: icon,
+              hasContent: !!editorContent,
+              initialContentBlocks: initialContent ? initialContent.length : 0,
+              updatedAt: new Date(currentPage.updatedAt).toLocaleString(),
+            };
+
+            console.log("Page Debug Info:", debugInfo);
+            alert(`Debug Info:\n${JSON.stringify(debugInfo, null, 2)}`);
+          }}
         >
-          <Ionicons name="create-outline" size={20} color="#FFFFFF" />
-          <Text style={styles.editButtonText}>Edit Note</Text>
+          <MaterialIcons name="bug-report" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: "100%",
+    height: "100%",
+  },
+  backButton: {
+    position: "absolute",
+    top: 50,
+    left: 15,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  savingIndicator: {
+    position: "absolute",
+    flexDirection: "row",
+    alignItems: "center",
+    top: 50,
+    right: 15,
+    zIndex: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.1)",
+  },
+  savingText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  titleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingTop: 100,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+    width: "100%",
+  },
+  iconDisplay: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  titleInput: {
+    flex: 1,
+    fontSize: 28,
+    fontWeight: "bold",
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.1)",
+  },
+  editorContainer: {
+    flex: 1,
+    width: "100%",
   },
   loadingContainer: {
     flex: 1,
@@ -192,97 +617,42 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 16,
     fontSize: 16,
+    fontWeight: "500",
   },
   errorContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 20,
   },
   errorText: {
-    fontSize: 18,
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  returnButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  returnButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-  },
-  backButton: {
-    padding: 8,
-  },
-  actionButton: {
-    padding: 8,
-  },
-  noteContainer: {
-    flex: 1,
-    padding: 20,
-  },
-  noteTitle: {
-    fontSize: 24,
-    fontWeight: "700",
     marginBottom: 16,
-  },
-  tagsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 20,
-  },
-  tag: {
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-  },
-  tagText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "500",
   },
-  contentContainer: {
-    marginBottom: 20,
-  },
-  contentText: {
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 10,
-  },
-  dateText: {
-    fontSize: 12,
-    marginTop: 20,
-  },
-  footer: {
-    padding: 20,
-    borderTopWidth: 1,
-    alignItems: "center",
-  },
-  editButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+  errorButton: {
+    padding: 16,
     borderRadius: 8,
   },
-  editButtonText: {
-    color: "#FFFFFF",
+  errorButtonText: {
     fontSize: 16,
     fontWeight: "500",
-    marginLeft: 8,
+    color: "white",
+  },
+  debugButton: {
+    position: "absolute",
+    bottom: 20,
+    right: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
 });

@@ -143,6 +143,37 @@ const CodeIcon = () => (
   </Svg>
 );
 
+// Add page icon component
+const AddPageIcon = () => (
+  <Svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <Path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z" />
+    <Path d="M8 6.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V11a.5.5 0 0 1-1 0V9.5H6a.5.5 0 0 1 0-1h1.5V7a.5.5 0 0 1 .5-.5z" />
+  </Svg>
+);
+
+// Delete page icon component
+const DeletePageIcon = () => (
+  <Svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <Path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" />
+    <Path
+      fillRule="evenodd"
+      d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"
+    />
+  </Svg>
+);
+
 // Simple custom toolbar buttons
 const ToolbarButton = ({ icon, onPress, isActive, tooltip }) => (
   <TouchableOpacity
@@ -159,7 +190,12 @@ const KeyboardToolbar = ({
   editor,
   keyboardHeight = 0,
   isKeyboardVisible = false,
+  onCreatePageLink, // Function to create new linked page
+  onDeletePage, // Function to delete current page
 }) => {
+  // State for tracking button visibility
+  const [showPageOptions, setShowPageOptions] = useState(false);
+
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
     italic: false,
@@ -174,7 +210,7 @@ const KeyboardToolbar = ({
     code: false,
   });
 
-  // Helper function to focus the editor
+  // Helper function to safely focus the editor
   const focusEditor = () => {
     try {
       if (!editor) return false;
@@ -192,71 +228,7 @@ const KeyboardToolbar = ({
     }
   };
 
-  // Check current marks and block type for highlighting active state
-  const checkActiveFormats = () => {
-    if (!editor) return;
-
-    try {
-      // Get current selection info from BlockNote if available
-      const cursorPosition = editor.getTextCursorPosition();
-      if (!cursorPosition) return;
-
-      // Check text formatting (marks)
-      const marks = cursorPosition.marks || {};
-
-      // Update text formatting status
-      setActiveFormats((prev) => ({
-        ...prev,
-        bold: !!marks.bold,
-        italic: !!marks.italic,
-        underline: !!marks.underline,
-        link: !!marks.link,
-      }));
-
-      // Check block type
-      if (cursorPosition.block) {
-        const block = cursorPosition.block;
-        const blockType = block.type;
-        const headingLevel = block.props?.level;
-
-        // Reset all block types first
-        const newActiveFormats = {
-          ...activeFormats,
-          heading1: false,
-          heading2: false,
-          heading3: false,
-          bulletList: false,
-          numberedList: false,
-          quote: false,
-          code: false,
-        };
-
-        // Set the active block type
-        if (blockType === "heading") {
-          if (headingLevel === 1) newActiveFormats.heading1 = true;
-          if (headingLevel === 2) newActiveFormats.heading2 = true;
-          if (headingLevel === 3) newActiveFormats.heading3 = true;
-        } else if (blockType === "bulletListItem") {
-          newActiveFormats.bulletList = true;
-        } else if (blockType === "numberedListItem") {
-          newActiveFormats.numberedList = true;
-        } else if (blockType === "quote") {
-          newActiveFormats.quote = true;
-        } else if (blockType === "code") {
-          newActiveFormats.code = true;
-        }
-
-        setActiveFormats((prev) => ({
-          ...prev,
-          ...newActiveFormats,
-        }));
-      }
-    } catch (error) {
-      console.error("Error checking active formats:", error);
-    }
-  };
-
-  // Function to apply formatting
+  // Function to safely apply formatting
   const applyFormat = (format) => {
     try {
       // Focus editor first
@@ -267,11 +239,22 @@ const KeyboardToolbar = ({
         return;
       }
 
-      // Get cursor position
-      const cursorPosition = editor.getTextCursorPosition();
-      if (!cursorPosition) {
-        console.log("No cursor position found");
-        return;
+      // Try to get cursor position - if it fails, don't proceed with text formatting
+      let cursorPosition;
+      try {
+        cursorPosition = editor.getTextCursorPosition();
+        if (!cursorPosition) {
+          console.log("No cursor position found");
+        }
+      } catch (error) {
+        console.error("Error getting cursor position:", error);
+        // If this is a page operation that doesn't require cursor, we can still proceed
+        if (format === "createPage" || format === "deletePage") {
+          // Continue - these operations don't necessarily need cursor position
+        } else {
+          // For text operations, we need cursor position
+          return;
+        }
       }
 
       // Handle text formatting (using BlockNote API)
@@ -387,17 +370,101 @@ const KeyboardToolbar = ({
           }
           break;
 
+        case "createPage":
+          // Call the provided callback to create a new nested page
+          if (typeof onCreatePageLink === "function") {
+            onCreatePageLink();
+          } else {
+            console.log("Create page function is not available");
+          }
+          break;
+
+        case "deletePage":
+          // Call the provided callback to delete the current page
+          if (typeof onDeletePage === "function") {
+            onDeletePage();
+          } else {
+            console.log("Delete page function is not available");
+          }
+          break;
+
         default:
           console.log("Unknown format:", format);
       }
 
-      // Update active states after action
-      setTimeout(() => {
-        checkActiveFormats();
-        focusEditor();
-      }, 10);
+      // Update active states after action if we have a valid cursor position
+      if (cursorPosition) {
+        setTimeout(() => {
+          checkActiveFormats();
+          focusEditor();
+        }, 10);
+      }
     } catch (error) {
       console.error("Error applying format:", error);
+    }
+  };
+
+  // Check current marks and block type for highlighting active state
+  const checkActiveFormats = () => {
+    if (!editor) return;
+
+    try {
+      // Get current selection info from BlockNote if available
+      const cursorPosition = editor.getTextCursorPosition();
+      if (!cursorPosition) return;
+
+      // Check text formatting (marks)
+      const marks = cursorPosition.marks || {};
+
+      // Update text formatting status
+      setActiveFormats((prev) => ({
+        ...prev,
+        bold: !!marks.bold,
+        italic: !!marks.italic,
+        underline: !!marks.underline,
+        link: !!marks.link,
+      }));
+
+      // Check block type
+      if (cursorPosition.block) {
+        const block = cursorPosition.block;
+        const blockType = block.type;
+        const blockLevel = block.props?.level;
+
+        // Reset all block types first
+        const newActiveFormats = {
+          ...activeFormats,
+          heading1: false,
+          heading2: false,
+          heading3: false,
+          bulletList: false,
+          numberedList: false,
+          quote: false,
+          code: false,
+        };
+
+        // Set the active block type
+        if (blockType === "heading") {
+          if (blockLevel === 1) newActiveFormats.heading1 = true;
+          if (blockLevel === 2) newActiveFormats.heading2 = true;
+          if (blockLevel === 3) newActiveFormats.heading3 = true;
+        } else if (blockType === "bulletListItem") {
+          newActiveFormats.bulletList = true;
+        } else if (blockType === "numberedListItem") {
+          newActiveFormats.numberedList = true;
+        } else if (blockType === "quote") {
+          newActiveFormats.quote = true;
+        } else if (blockType === "code") {
+          newActiveFormats.code = true;
+        }
+
+        setActiveFormats((prev) => ({
+          ...prev,
+          ...newActiveFormats,
+        }));
+      }
+    } catch (error) {
+      console.error("Error checking active formats:", error);
     }
   };
 
@@ -427,7 +494,7 @@ const KeyboardToolbar = ({
   const toolbarBottomPosition = isKeyboardVisible ? keyboardHeight + 10 : 20;
 
   return (
-    <View style={[styles.toolbarContainer, { bottom: keyboardHeight }]}>
+    <View style={[styles.toolbarContainer, { bottom: 0 }]}>
       <View style={styles.keyboardToolbar}>
         {/* Block formatting buttons */}
         <View style={styles.toolbarGroup}>
@@ -504,6 +571,28 @@ const KeyboardToolbar = ({
             tooltip="Underline"
           />
         </View>
+
+        {/* Page operations */}
+        {(onCreatePageLink || onDeletePage) && (
+          <View style={styles.toolbarGroup}>
+            {onCreatePageLink && (
+              <ToolbarButton
+                icon={<AddPageIcon />}
+                onPress={() => applyFormat("createPage")}
+                isActive={false}
+                tooltip="Create Nested Page"
+              />
+            )}
+            {onDeletePage && (
+              <ToolbarButton
+                icon={<DeletePageIcon />}
+                onPress={() => applyFormat("deletePage")}
+                isActive={false}
+                tooltip="Delete Current Page"
+              />
+            )}
+          </View>
+        )}
       </View>
     </View>
   );
@@ -522,7 +611,6 @@ const styles = StyleSheet.create({
   keyboardToolbar: {
     flexDirection: "row",
     backgroundColor: "#fbfbfb",
-
     paddingHorizontal: 8,
     paddingVertical: 4,
     elevation: 4,
