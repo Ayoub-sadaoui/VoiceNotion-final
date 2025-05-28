@@ -5,9 +5,6 @@
  * Currently using mock implementation - will be replaced with Gemini API integration.
  */
 
-import { Audio } from "expo-av";
-import Toast from "react-native-toast-message";
-
 // Mock responses for demonstration purposes
 const mockResponses = {
   addText: {
@@ -33,218 +30,100 @@ const mockResponses = {
 };
 
 /**
- * Voice recording service for handling audio recording and processing
+ * Start voice recording
+ * @returns {Promise<Object>} A promise that resolves with the recording session
  */
-class VoiceService {
-  constructor() {
-    this.recording = null;
-    this.sound = null;
-    this.isRecording = false;
-    this.audioUri = null;
-  }
+export const startVoiceRecording = async () => {
+  // In a real implementation, this would use the device's microphone
+  console.log("Starting voice recording...");
 
-  /**
-   * Starts a new voice recording
-   * @returns {Promise<boolean>} Success status
-   */
-  async startRecording() {
-    try {
-      // Request permission
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== "granted") {
-        Toast.show({
-          type: "error",
-          text1: "Microphone permission not granted",
-          text2: "Please enable microphone access in settings",
-          position: "top",
-        });
-        return false;
-      }
+  // Return a mock recording session
+  return {
+    recording: true,
+    stopRecording: stopVoiceRecording,
+  };
+};
 
-      // Set audio mode for recording
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
+/**
+ * Stop voice recording
+ * @returns {Promise<Object>} A promise that resolves with the recorded audio
+ */
+export const stopVoiceRecording = async () => {
+  console.log("Stopping voice recording...");
+
+  // In a real implementation, this would return the recorded audio data
+  return {
+    audio: "mock-audio-data",
+    duration: 2.5, // seconds
+  };
+};
+
+/**
+ * Process voice input
+ * @param {Object} audioData - The recorded audio data
+ * @returns {Promise<Object>} A promise that resolves with the parsed intent
+ */
+export const processVoiceInput = async (audioData) => {
+  console.log("Processing voice input:", audioData);
+
+  // Simulate processing delay
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      // For demonstration purposes, randomly select a mock response
+      const responseKeys = Object.keys(mockResponses);
+      const randomKey =
+        responseKeys[Math.floor(Math.random() * responseKeys.length)];
+
+      resolve({
+        success: true,
+        intent: mockResponses[randomKey],
       });
+    }, 1000);
+  });
+};
 
-      // Create recording instance
-      console.log("Creating recording...");
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+/**
+ * Handle voice command
+ * This is a convenience function that handles the entire voice input process.
+ * @returns {Promise<Object>} A promise that resolves with the parsed intent
+ */
+export const handleVoiceCommand = async () => {
+  try {
+    // Start recording
+    const recordingSession = await startVoiceRecording();
 
-      this.recording = recording;
-      this.isRecording = true;
-      console.log("Recording started");
-      return true;
-    } catch (error) {
-      console.error("Failed to start recording:", error);
-      Toast.show({
-        type: "error",
-        text1: "Recording Error",
-        text2: `Failed to start recording: ${error.message || "Unknown error"}`,
-        position: "top",
-      });
-      return false;
-    }
+    // Simulate a 2-second recording
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Stop recording
+    const audioData = await stopVoiceRecording();
+
+    // Process the recording
+    const result = await processVoiceInput(audioData);
+
+    return result;
+  } catch (error) {
+    console.error("Error handling voice command:", error);
+    return {
+      success: false,
+      error: error.message || "Unknown error",
+    };
   }
+};
 
-  /**
-   * Stops the current voice recording
-   * @returns {Promise<string|null>} URI of recorded audio or null if failed
-   */
-  async stopRecording() {
-    try {
-      if (!this.recording) {
-        console.warn("No active recording to stop");
-        return null;
-      }
+// For future implementation with Gemini API
+const parseVoiceIntent = async (text) => {
+  // This will be replaced with Gemini API call to parse intent from text
+  return {
+    type: "ADD_TEXT",
+    text: text,
+  };
+};
 
-      console.log("Stopping recording...");
-      await this.recording.stopAndUnloadAsync();
-
-      // Get recording URI
-      const uri = this.recording.getURI();
-      this.audioUri = uri;
-      this.isRecording = false;
-      this.recording = null;
-
-      // Reset audio mode
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-      });
-
-      console.log("Recording stopped, URI:", uri);
-      return uri;
-    } catch (error) {
-      console.error("Failed to stop recording:", error);
-      this.isRecording = false;
-      this.recording = null;
-      return null;
-    }
-  }
-
-  /**
-   * Process recorded audio with Gemini API
-   * @returns {Promise<Object|null>} Processed result or null if failed
-   */
-  async processRecording() {
-    try {
-      if (!this.audioUri) {
-        console.warn("No recorded audio to process");
-        return null;
-      }
-
-      // Here we would typically:
-      // 1. Convert the audio to the correct format if needed
-      // 2. Upload/send the audio to Gemini API
-      // 3. Process the response
-
-      // For now, this is just a placeholder that returns simulated data
-      console.log("Processing recording...");
-
-      // Simulate API processing time
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Simulated response from Gemini API
-      const simulatedResponse = {
-        text: "This is simulated voice transcription. In a real implementation, this would be the text transcribed by Gemini API.",
-        intent: {
-          type: "TEXT_INPUT",
-          parameters: {
-            format: "paragraph",
-          },
-        },
-        confidence: 0.92,
-      };
-
-      console.log("Processing complete:", simulatedResponse);
-      return simulatedResponse;
-    } catch (error) {
-      console.error("Failed to process recording:", error);
-      return null;
-    }
-  }
-
-  /**
-   * Process voice input with a specific text
-   * @param {string} text - The text to process
-   * @returns {Promise<Object>} A promise that resolves with the parsed intent
-   */
-  async processVoiceInput(text) {
-    console.log("Processing voice input text:", text);
-
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    // For demo, just return a random mock response
-    const responseTypes = Object.keys(mockResponses);
-    const randomType =
-      responseTypes[Math.floor(Math.random() * responseTypes.length)];
-
-    console.log(`Returning mock response of type: ${randomType}`);
-    return mockResponses[randomType];
-  }
-
-  /**
-   * Handle voice command execution
-   * @param {Object} intent - The parsed intent from voice
-   * @param {Object} editor - The editor instance
-   * @returns {Promise<boolean>} Success status
-   */
-  async handleVoiceCommand(intent, editor) {
-    if (!intent || !intent.type) {
-      console.error("Invalid intent:", intent);
-      return false;
-    }
-
-    console.log("Handling voice command:", intent);
-
-    // In a real implementation, this would execute the command on the editor
-    // For now, just log it
-    switch (intent.type) {
-      case "ADD_TEXT":
-        console.log(`Would add text: "${intent.text}"`);
-        break;
-      case "FORMAT_TEXT":
-        console.log(`Would format text: ${intent.format} = ${intent.value}`);
-        break;
-      case "CREATE_BLOCK":
-        console.log(
-          `Would create ${intent.blockType} block with text: "${intent.text}"`
-        );
-        break;
-      default:
-        console.warn(`Unknown intent type: ${intent.type}`);
-        return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Cleans up recording resources
-   */
-  async cleanup() {
-    if (this.recording) {
-      try {
-        await this.recording.stopAndUnloadAsync();
-      } catch (error) {
-        console.warn("Error cleaning up recording:", error);
-      }
-      this.recording = null;
-    }
-
-    this.isRecording = false;
-    this.audioUri = null;
-  }
-}
-
-// Create a singleton instance
-const voiceService = new VoiceService();
-
-// Export the instance as default
-export default voiceService;
+export default {
+  startVoiceRecording,
+  stopVoiceRecording,
+  processVoiceInput,
+  handleVoiceCommand,
+  parseVoiceIntent,
+};
