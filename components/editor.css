@@ -152,6 +152,7 @@ body {
   background-color: white !important;
   border-bottom: 1px solid #eee !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+  overflow-y: visible !important;
   min-width: min-content !important; /* Ensure toolbar doesn't shrink smaller than content */
 }
 

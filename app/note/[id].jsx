@@ -10,6 +10,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Modal,
+  FlatList,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
@@ -18,6 +20,110 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import usePageStorage from "../../hooks/usePageStorage";
 import HelloWorld from "../../components/Editor.web";
 import debounce from "lodash.debounce";
+
+// Array of common emojis for page icons
+const COMMON_EMOJIS = [
+  "📄",
+  "📝",
+  "📔",
+  "📕",
+  "📗",
+  "📘",
+  "📙",
+  "📚",
+  "📒",
+  "📋",
+  "📖",
+  "📑",
+  "🗒️",
+  "📰",
+  "🏷️",
+  "🔖",
+  "📌",
+  "📍",
+  "💼",
+  "🗂️",
+  "🗃️",
+  "🗄️",
+  "✏️",
+  "✒️",
+  "🖋️",
+  "🖊️",
+  "🖌️",
+  "🖍️",
+  "📐",
+  "📏",
+  "📊",
+  "📈",
+  "📉",
+  "🔍",
+  "🔎",
+  "🔎",
+  "💡",
+  "💻",
+  "🖥️",
+  "📱",
+  "⌨️",
+  "🖱️",
+  "🏠",
+  "🏢",
+  "🏫",
+  "🏭",
+  "🏛️",
+  "🏗️",
+  "🏘️",
+  "🏙️",
+  "🚗",
+  "✈️",
+  "🚀",
+  "🚁",
+  "⚙️",
+  "🔧",
+  "🔨",
+  "🛠️",
+  "⚡",
+  "🔋",
+  "⏱️",
+  "⏰",
+  "⌚",
+  "🧠",
+  "👁️",
+  "👂",
+  "🦷",
+  "👄",
+  "👅",
+  "👣",
+  "👤",
+  "👥",
+  "👪",
+  "👨‍👩‍👧‍👦",
+  "🧑‍🤝‍🧑",
+  "💪",
+  "🦾",
+  "🦿",
+  "🦵",
+  "🦶",
+  "👈",
+  "👉",
+  "👆",
+  "👇",
+  "👍",
+  "👎",
+  "✊",
+  "👊",
+  "🤛",
+  "🤜",
+  "🤞",
+  "✌️",
+  "🤘",
+  "🤙",
+  "👋",
+  "🖐️",
+  "👌",
+  "🤏",
+  "🤝",
+  "🙏",
+];
 
 export default function NoteScreen() {
   const { theme, isDark } = useTheme();
@@ -49,6 +155,7 @@ export default function NoteScreen() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [nestedPages, setNestedPages] = useState([]);
+  const [showIconPicker, setShowIconPicker] = useState(false);
 
   // Listen for keyboard events
   useEffect(() => {
@@ -626,6 +733,65 @@ export default function NoteScreen() {
     }
   };
 
+  // Handle icon selection
+  const handleIconSelect = (newIcon) => {
+    setIcon(newIcon);
+    setShowIconPicker(false);
+
+    // Save the change
+    if (currentPage) {
+      debouncedSave(editorContent || initialContent);
+    }
+  };
+
+  // Icon picker modal
+  const renderIconPicker = () => {
+    return (
+      <Modal
+        visible={showIconPicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowIconPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowIconPicker(false)}
+        >
+          <View
+            style={[
+              styles.iconPickerContainer,
+              { backgroundColor: theme.background },
+            ]}
+          >
+            <View style={styles.iconPickerHeader}>
+              <Text style={[styles.iconPickerTitle, { color: theme.text }]}>
+                Select Icon
+              </Text>
+              <TouchableOpacity onPress={() => setShowIconPicker(false)}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={COMMON_EMOJIS}
+              numColumns={8}
+              keyExtractor={(item, index) => `emoji-${index}`}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.emojiItem}
+                  onPress={() => handleIconSelect(item)}
+                >
+                  <Text style={styles.emoji}>{item}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    );
+  };
+
   if (storageLoading || isLoading) {
     return (
       <SafeAreaView
@@ -696,7 +862,19 @@ export default function NoteScreen() {
 
       {/* Title area */}
       <View style={styles.titleContainer}>
-        <Text style={[styles.iconDisplay, { color: theme.text }]}>{icon}</Text>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => setShowIconPicker(true)}
+        >
+          <Text style={[styles.iconDisplay, { color: theme.text }]}>
+            {icon}
+          </Text>
+          <View
+            style={[styles.iconEditBadge, { backgroundColor: theme.primary }]}
+          >
+            <Ionicons name="pencil" size={10} color="#FFF" />
+          </View>
+        </TouchableOpacity>
 
         <TextInput
           style={[
@@ -711,6 +889,8 @@ export default function NoteScreen() {
           placeholder="Note Title"
           placeholderTextColor={theme.secondaryText || "#999"}
           maxLength={100}
+          multiline={true}
+          numberOfLines={2}
         />
       </View>
 
@@ -744,6 +924,9 @@ export default function NoteScreen() {
           </View>
         )}
       </KeyboardAvoidingView>
+
+      {/* Icon Picker Modal */}
+      {renderIconPicker()}
     </View>
   );
 }
@@ -784,22 +967,41 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 10,
     width: "100%",
   },
+  iconButton: {
+    position: "relative",
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+    marginTop: 8,
+  },
   iconDisplay: {
     fontSize: 24,
-    marginRight: 10,
+  },
+  iconEditBadge: {
+    position: "absolute",
+    bottom: -3,
+    right: -3,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: "center",
+    alignItems: "center",
   },
   titleInput: {
     flex: 1,
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: "bold",
     paddingVertical: 8,
     paddingHorizontal: 4,
+    textAlignVertical: "top",
   },
   editorContainer: {
     flex: 1,
@@ -848,5 +1050,45 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  iconPickerContainer: {
+    width: "80%",
+    maxHeight: "70%",
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  iconPickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  iconPickerTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  emojiItem: {
+    width: "12.5%",
+    aspectRatio: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 8,
+  },
+  emoji: {
+    fontSize: 24,
   },
 });

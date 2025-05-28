@@ -701,7 +701,8 @@ const HelloWorld = forwardRef((props, ref) => {
               style={{
                 width: "96%",
                 maxWidth: "100vw",
-                overflow: "hidden",
+                overflowX: "hidden",
+                overflowY: "auto",
               }}
             >
               <FormattingToolbar className="custom-formatting-toolbar bn-formatting-toolbar">

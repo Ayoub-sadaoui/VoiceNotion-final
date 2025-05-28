@@ -217,7 +217,7 @@ export default function EditorScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <TouchableOpacity
-        style={[styles.backButton, { backgroundColor: theme.surface }]}
+        style={[styles.backButton, { backgroundColor: "transparent" }]}
         onPress={handleGoBack}
       >
         <Ionicons name="arrow-back" size={24} color={theme.text} />
@@ -275,11 +275,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
   },
   titleContainer: {
     flexDirection: "row",
@@ -308,8 +303,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     paddingVertical: 8,
     paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.1)",
   },
   // Modal styles
   modalContainer: {
