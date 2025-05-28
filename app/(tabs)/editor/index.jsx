@@ -11,11 +11,15 @@ import {
   ScrollView,
   Keyboard,
   KeyboardEvent,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import HelloWorld from "../../../components/Editor.web";
 import { useTheme } from "../../../utils/themeContext";
+import VoiceButton from "../../../components/VoiceButton";
+import Toast from "react-native-toast-message";
+import voiceService from "../../../services/voiceService";
 
 // Array of available icons for notes
 const AVAILABLE_ICONS = [
@@ -98,6 +102,8 @@ export default function EditorScreen() {
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [voiceText, setVoiceText] = useState("");
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
 
   // Try to use theme with fallback to prevent crash
   let theme;
@@ -164,6 +170,97 @@ export default function EditorScreen() {
   const selectIcon = (iconName) => {
     setSelectedIcon(iconName);
     setShowIconPicker(false);
+  };
+
+  // Handle voice recording start
+  const handleVoiceStart = async () => {
+    setIsProcessingVoice(true);
+
+    const success = await voiceService.startRecording();
+    if (!success) {
+      setIsProcessingVoice(false);
+      Toast.show({
+        type: "error",
+        text1: "Could not start recording",
+        position: "top",
+        visibilityTime: 2000,
+      });
+    } else {
+      Toast.show({
+        type: "info",
+        text1: "Voice Recording Started",
+        text2: "Speak clearly into the microphone...",
+        position: "top",
+        visibilityTime: 2000,
+      });
+    }
+  };
+
+  // Handle voice recording end
+  const handleVoiceEnd = async () => {
+    if (!voiceService.isRecording) {
+      setIsProcessingVoice(false);
+      return;
+    }
+
+    const audioUri = await voiceService.stopRecording();
+
+    if (!audioUri) {
+      setIsProcessingVoice(false);
+      Toast.show({
+        type: "error",
+        text1: "Recording Failed",
+        text2: "Could not save the recording",
+        position: "top",
+        visibilityTime: 2000,
+      });
+      return;
+    }
+
+    Toast.show({
+      type: "success",
+      text1: "Voice Recording Completed",
+      text2: "Processing your voice input...",
+      position: "top",
+      visibilityTime: 2000,
+    });
+
+    // Process the recording
+    const result = await voiceService.processRecording();
+    setIsProcessingVoice(false);
+
+    if (result) {
+      setVoiceText(result.text);
+
+      Toast.show({
+        type: "success",
+        text1: "Voice Processing Complete",
+        position: "top",
+        visibilityTime: 2000,
+      });
+
+      // Here we would use the result to update the editor
+      console.log("Voice processing result:", result);
+    } else {
+      Toast.show({
+        type: "error",
+        text1: "Voice Processing Failed",
+        position: "top",
+        visibilityTime: 2000,
+      });
+    }
+  };
+
+  // Handle voice recording error
+  const handleVoiceError = (error) => {
+    setIsProcessingVoice(false);
+    Toast.show({
+      type: "error",
+      text1: "Voice Recording Error",
+      text2: error || "An unknown error occurred",
+      position: "top",
+      visibilityTime: 3000,
+    });
   };
 
   const renderIconPickerModal = () => (
@@ -253,6 +350,23 @@ export default function EditorScreen() {
         keyboardHeight={keyboardHeight}
         isKeyboardVisible={isKeyboardVisible}
       />
+
+      {/* Floating Voice Button */}
+      <View style={styles.voiceButtonContainer}>
+        <VoiceButton
+          size={64}
+          onStart={handleVoiceStart}
+          onEnd={handleVoiceEnd}
+          onError={handleVoiceError}
+          containerStyle={{
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 4.65,
+            elevation: 8,
+          }}
+        />
+      </View>
 
       {renderIconPickerModal()}
     </View>
@@ -353,5 +467,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     margin: "1%",
     borderRadius: 8,
+  },
+  voiceButtonContainer: {
+    position: "absolute",
+    bottom: Platform.OS === "ios" ? 30 : 20,
+    right: 20,
+    zIndex: 1000,
   },
 });

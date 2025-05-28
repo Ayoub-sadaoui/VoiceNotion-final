@@ -470,57 +470,6 @@ export default function HomeScreen() {
         </View>
       ) : (
         <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-          {/* Test navigation buttons */}
-          <View style={styles.testButtonsContainer}>
-            <TouchableOpacity
-              style={[styles.testButton, { backgroundColor: theme.primary }]}
-              onPress={() => router.push("/note")}
-            >
-              <Text style={styles.testButtonText}>Go to Note Index</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.testButton, { backgroundColor: theme.secondary }]}
-              onPress={() => {
-                // Get the first page ID if available
-                if (pages && pages.length > 0) {
-                  const testPageId = pages[0].id;
-                  console.log(
-                    "Testing navigation to specific page:",
-                    testPageId
-                  );
-                  router.push(`/note/${testPageId}`);
-                } else {
-                  alert("No pages available to test with");
-                }
-              }}
-            >
-              <Text style={styles.testButtonText}>Test Page Navigation</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.testButton, { backgroundColor: theme.primary }]}
-              onPress={() => router.push("/test")}
-            >
-              <Text style={styles.testButtonText}>Test Route</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.testButton, { backgroundColor: "#4CAF50" }]}
-              onPress={async () => {
-                const created = await createTestPages();
-                if (created) {
-                  alert("Test pages created successfully!");
-                } else {
-                  alert("Test pages already exist.");
-                }
-                loadPages();
-              }}
-            >
-              <Text style={styles.testButtonText}>Create Test Pages</Text>
-            </TouchableOpacity>
-          </View>
-
           <FlatList
             data={pageTree}
             keyExtractor={(item) => item.id}
