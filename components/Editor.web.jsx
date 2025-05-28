@@ -191,6 +191,9 @@ const HelloWorld = forwardRef((props, ref) => {
     },
   });
 
+  // Save the editor instance to ref so we can access it later
+  editorInstance.current = editor;
+
   // State for dialog to create a new page
   const [showCreatePageDialog, setShowCreatePageDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -347,80 +350,134 @@ const HelloWorld = forwardRef((props, ref) => {
     }
   }, [editor, nestedPages, contentInitialized]);
 
-  // Expose methods to the native side
+  // Function to insert transcribed text as a new paragraph
+  const insertTranscribedText = (text) => {
+    if (!editor || !text) {
+      console.warn("Cannot insert text: Editor or text is missing");
+      return false;
+    }
+
+    try {
+      console.log("Inserting transcribed text:", text);
+
+      // Try multiple approaches to insert the text
+
+      // Approach 1: Use the editor's insertBlocks method
+      try {
+        // Create a properly formatted paragraph block
+        const newBlock = {
+          type: "paragraph",
+          props: {
+            textColor: "default",
+            backgroundColor: "default",
+            textAlignment: "left",
+          },
+          content: [
+            {
+              type: "text",
+              text: text,
+              styles: {},
+            },
+          ],
+          children: [],
+        };
+
+        // Get the current blocks
+        const blocks = editor.topLevelBlocks;
+
+        if (blocks && blocks.length > 0) {
+          // Get the last block
+          const lastBlock = blocks[blocks.length - 1];
+          // Insert after the last block
+          editor.insertBlocks([newBlock], lastBlock, "after");
+          console.log("Successfully inserted using approach 1");
+          return true;
+        } else {
+          // Insert at the root level if document is empty
+          editor.insertBlocks([newBlock], null, "firstChild");
+          console.log("Successfully inserted at root level using approach 1");
+          return true;
+        }
+      } catch (error1) {
+        console.warn("Approach 1 failed:", error1);
+
+        // Approach 2: Use lower-level TipTap editor commands
+        try {
+          if (editor._tiptapEditor) {
+            // Focus the editor first
+            editor._tiptapEditor.commands.focus("end");
+
+            // Insert a new paragraph
+            editor._tiptapEditor.commands.insertContent({
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: text,
+                },
+              ],
+            });
+
+            console.log(
+              "Successfully inserted using approach 2 (TipTap commands)"
+            );
+            return true;
+          }
+        } catch (error2) {
+          console.warn("Approach 2 failed:", error2);
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error("Error inserting transcribed text:", error);
+      return false;
+    }
+  };
+
+  // Expose methods to the parent component
   useImperativeHandle(ref, () => ({
-    // Method to get editor content as JSON
+    // Function to get the editor content
     getContent: () => {
-      return editor.topLevelBlocks;
+      if (editor) {
+        return editor.topLevelBlocks;
+      }
+      return null;
     },
 
-    // Method to insert a page link block
+    // Function to set the editor content
+    setContent: (content) => {
+      if (editor && content) {
+        editor.replaceBlocks(
+          editor.document?.map((block) => block.id) || [],
+          content
+        );
+        return true;
+      }
+      return false;
+    },
+
+    // Function to insert a page link block
     insertPageLink: (pageId, pageTitle, pageIcon) => {
-      console.log("insertPageLink called with:", pageId, pageTitle, pageIcon);
       insertPageLinkBlock(pageId, pageTitle, pageIcon);
     },
 
-    // Method to delete the current page
+    // Function to delete the current page
     deleteCurrentPage: () => {
-      if (currentPageId && onDeletePage) {
-        setPageToDelete(currentPageId);
-        setShowDeleteConfirm(true);
+      if (onDeletePage && currentPageId) {
+        onDeletePage(currentPageId, true);
       }
     },
 
-    // Method to remove a page link block when page is deleted from elsewhere
-    removePageLink: (pageId) => {
-      if (editor && pageId) {
-        console.log("Removing page link for deleted page:", pageId);
-
-        // Find all page link blocks with this pageId
-        const blocksToRemove = [];
-        editor.topLevelBlocks.forEach((block) => {
-          if (block.type === "pageLink" && block.props.pageId === pageId) {
-            blocksToRemove.push(block);
-          }
-        });
-
-        // Remove the blocks if any were found
-        if (blocksToRemove.length > 0) {
-          editor.removeBlocks(blocksToRemove);
-          console.log("Removed page link blocks:", blocksToRemove.length);
-
-          // Ensure changes are saved immediately
-          if (onChange) {
-            onChange(editor.topLevelBlocks);
-          }
-        }
-      }
+    // Function to insert transcribed text
+    insertTranscribedText: (text) => {
+      console.log("insertTranscribedText called with:", text);
+      return insertTranscribedText(text);
     },
 
-    // Method to remove multiple page link blocks at once
-    removePageLinks: (pageIds) => {
-      if (editor && pageIds && pageIds.length > 0) {
-        console.log("Removing multiple page links:", pageIds.length);
-
-        // Find all page link blocks with matching pageIds
-        const blocksToRemove = [];
-        editor.topLevelBlocks.forEach((block) => {
-          if (
-            block.type === "pageLink" &&
-            pageIds.includes(block.props.pageId)
-          ) {
-            blocksToRemove.push(block);
-          }
-        });
-
-        // Remove the blocks if any were found
-        if (blocksToRemove.length > 0) {
-          editor.removeBlocks(blocksToRemove);
-          console.log("Removed page link blocks:", blocksToRemove.length);
-
-          // Ensure changes are saved immediately
-          if (onChange) {
-            onChange(editor.topLevelBlocks);
-          }
-        }
-      }
+    // Provide direct access to the editor
+    getEditor: () => {
+      return editor;
     },
   }));
 

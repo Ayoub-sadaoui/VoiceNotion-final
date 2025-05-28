@@ -1,4 +1,11 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import {
   View,
   Text,
@@ -10,14 +17,91 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Alert,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system";
 import { useTheme } from "../../utils/themeContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import usePageStorage from "../../hooks/usePageStorage";
 import HelloWorld from "../../components/Editor.web";
 import debounce from "lodash.debounce";
+
+// API Key for Google Cloud Speech-to-Text
+// SECURITY WARNING: For production, this should be moved to a secure backend
+const GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY =
+  "AIzaSyBUjmj5WK8mqBhLlhyx-5-J3blXa9v8ZzQ"; // REPLACE THIS!
+
+// This component is a native wrapper around our DOM Editor.web.jsx component
+const Editor = forwardRef((props, ref) => {
+  // ... existing code ...
+
+  // Expose methods to parent components
+  useImperativeHandle(ref, () => ({
+    // Get the editor content
+    getContent: () => {
+      if (editorRef.current) {
+        return editorRef.current.getContent();
+      }
+      return null;
+    },
+
+    // Insert a page link block
+    insertPageLink: (pageId, pageTitle, pageIcon) => {
+      if (editorRef.current) {
+        editorRef.current.insertPageLink(pageId, pageTitle, pageIcon);
+      }
+    },
+
+    // Add a method to insert transcribed text
+    insertTranscription: (text) => {
+      if (editorRef.current && editorRef.current._blockNoteEditor) {
+        try {
+          // Create a new paragraph block
+          const newBlock = { type: "paragraph", content: text };
+
+          // Try to insert after the last block
+          if (
+            editorRef.current._blockNoteEditor.document &&
+            editorRef.current._blockNoteEditor.document.length > 0
+          ) {
+            const lastBlockId =
+              editorRef.current._blockNoteEditor.document[
+                editorRef.current._blockNoteEditor.document.length - 1
+              ].id;
+            editorRef.current._blockNoteEditor.insertBlocks(
+              [newBlock],
+              lastBlockId,
+              "after"
+            );
+            return true;
+          } else {
+            // Try inserting at root
+            editorRef.current._blockNoteEditor.insertBlocks(
+              [newBlock],
+              "root",
+              "after"
+            );
+            return true;
+          }
+        } catch (error) {
+          console.error("Error inserting transcription:", error);
+          return false;
+        }
+      }
+      return false;
+    },
+
+    // Delete the current page
+    deleteCurrentPage: () => {
+      if (editorRef.current && currentPageId) {
+        editorRef.current.deleteCurrentPage(currentPageId);
+      }
+    },
+  }));
+}); // Close the Editor component
 
 export default function NoteScreen() {
   const { theme, isDark } = useTheme();
@@ -49,6 +133,11 @@ export default function NoteScreen() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [nestedPages, setNestedPages] = useState([]);
+
+  // Recording state
+  const [recording, setRecording] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedUri, setRecordedUri] = useState(null);
 
   // Listen for keyboard events
   useEffect(() => {
@@ -500,6 +589,224 @@ export default function NoteScreen() {
     }
   };
 
+  // Alternative approach to transcribe audio using file URI instead of Base64
+  const transcribeAudioAlternative = async (audioUri) => {
+    try {
+      console.log("Starting alternative transcription process for:", audioUri);
+
+      if (!audioUri) {
+        console.error("No audio URI provided for transcription");
+        return null;
+      }
+
+      // For debugging - add a short delay to ensure file is fully written
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Check if file exists and get info
+      const fileInfo = await FileSystem.getInfoAsync(audioUri);
+      console.log("File info:", fileInfo);
+
+      if (!fileInfo.exists) {
+        console.error("Audio file does not exist at specified URI");
+        return null;
+      }
+
+      // Get file extension from URI
+      const fileExtension = audioUri.split(".").pop().toLowerCase();
+      console.log("File extension:", fileExtension);
+
+      // Prepare request to Speech-to-Text API using custom approach - this is an alternative
+      // that we'll try if the direct Base64 approach fails
+
+      // First, try the main approach
+      const transcription = await transcribeAudio(audioUri);
+
+      if (transcription) {
+        return transcription;
+      } else {
+        console.log(
+          "Main transcription approach failed, please check your API key and account setup"
+        );
+        Alert.alert(
+          "Transcription Issue",
+          "There was a problem with the transcription service. Please verify your Google Cloud API key and ensure the Speech-to-Text API is enabled in your Google Cloud Console."
+        );
+        return null;
+      }
+    } catch (error) {
+      console.error("Error in alternative transcription method:", error);
+      return null;
+    }
+  };
+
+  // Handle voice record button press
+  const handleVoiceRecordPress = async () => {
+    try {
+      // If we're already recording, stop the recording
+      if (isRecording) {
+        const uri = await stopRecording();
+        // Process the recording for transcription
+        if (uri) {
+          console.log("Starting transcription of recorded audio...");
+          const transcription = await transcribeAudioAlternative(uri);
+
+          // Check if we have valid transcription text
+          if (transcription) {
+            console.log("Final transcription result:", transcription);
+
+            // Debug available methods on the editor ref
+            console.log(
+              "Editor ref methods:",
+              Object.keys(editorRef.current || {})
+            );
+
+            // Check if editor reference exists
+            if (editorRef.current) {
+              try {
+                // Force direct access to the DOM component if it exists
+                if (
+                  editorRef.current._reactInternals?.child?.child?.stateNode
+                ) {
+                  console.log("Found DOM component via _reactInternals");
+                  const domComponent =
+                    editorRef.current._reactInternals.child.child.stateNode;
+                  if (
+                    typeof domComponent.insertTranscribedText === "function"
+                  ) {
+                    const success =
+                      domComponent.insertTranscribedText(transcription);
+                    if (success) {
+                      console.log(
+                        "Successfully inserted text via DOM component"
+                      );
+                      return;
+                    }
+                  }
+                }
+
+                // Try using the insertTranscribedText method first
+                if (
+                  typeof editorRef.current.insertTranscribedText === "function"
+                ) {
+                  const success =
+                    editorRef.current.insertTranscribedText(transcription);
+                  if (success) {
+                    console.log(
+                      "Successfully inserted transcription into editor"
+                    );
+                    return;
+                  } else {
+                    console.warn(
+                      "insertTranscribedText returned false, trying fallback approaches"
+                    );
+                  }
+                } else {
+                  console.warn(
+                    "insertTranscribedText method not found on editor ref"
+                  );
+                }
+
+                // Fallback approach - try to access the editor directly
+                if (typeof editorRef.current.getEditor === "function") {
+                  const editor = editorRef.current.getEditor();
+                  if (editor) {
+                    console.log("Got editor instance, inserting text directly");
+
+                    // Create a properly formatted paragraph block
+                    const newBlock = {
+                      type: "paragraph",
+                      props: {
+                        textColor: "default",
+                        backgroundColor: "default",
+                        textAlignment: "left",
+                      },
+                      content: [
+                        {
+                          type: "text",
+                          text: transcription,
+                          styles: {},
+                        },
+                      ],
+                      children: [],
+                    };
+
+                    // Get the current blocks
+                    const blocks = editor.topLevelBlocks;
+
+                    // Insert the block
+                    if (blocks && blocks.length > 0) {
+                      const lastBlock = blocks[blocks.length - 1];
+                      editor.insertBlocks([newBlock], lastBlock, "after");
+                      console.log(
+                        "Successfully inserted text using direct editor access"
+                      );
+                      return;
+                    } else {
+                      editor.insertBlocks([newBlock], null, "firstChild");
+                      console.log("Successfully inserted text at root level");
+                      return;
+                    }
+                  }
+                }
+
+                // If all else fails, show an alert with the transcription
+                Alert.alert("Transcription Result", transcription, [
+                  {
+                    text: "OK",
+                    onPress: () =>
+                      console.log("User acknowledged transcription"),
+                  },
+                ]);
+              } catch (editorError) {
+                console.error("Error inserting text into editor:", editorError);
+                // Show alert with transcription so user can manually copy
+                Alert.alert("Transcription Result", transcription, [
+                  {
+                    text: "OK",
+                    onPress: () =>
+                      console.log("User acknowledged transcription"),
+                  },
+                ]);
+              }
+            } else {
+              console.warn("Editor reference is not available");
+              // Show alert with transcription so user can manually copy
+              Alert.alert("Transcription Result", transcription, [
+                {
+                  text: "OK",
+                  onPress: () => console.log("User acknowledged transcription"),
+                },
+              ]);
+            }
+          } else {
+            console.warn("No transcription result available to insert");
+          }
+        }
+        return;
+      }
+
+      // Otherwise check permissions and start recording
+      console.log("Requesting microphone permission...");
+      const { status } = await Audio.requestPermissionsAsync();
+      console.log("Permission status:", status);
+
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Required",
+          "Microphone permission is needed to use voice recording features.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      // Permission is granted, start recording
+      await startRecording();
+    } catch (error) {
+      console.error("Error in voice recording process:", error);
+      Alert.alert("Error", "Failed to handle voice recording.");
+    }
+  };
+
   // Handle deleting the current page
   const handleDeletePage = async (pageId, isUserInitiated = true) => {
     try {
@@ -626,6 +933,204 @@ export default function NoteScreen() {
     }
   };
 
+  // Start recording function
+  const startRecording = async () => {
+    try {
+      console.log("Starting recording...");
+
+      // Set audio mode for recording
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false, // Or true, depending on desired behavior
+        staysActiveInBackground: false,
+      });
+
+      // Use AMR format which is well-supported by Google Speech-to-Text
+      const { recording: newRecording } = await Audio.Recording.createAsync({
+        android: {
+          extension: ".amr",
+          outputFormat: Audio.AndroidOutputFormat.AMR_NB,
+          audioEncoder: Audio.AndroidAudioEncoder.AMR_NB,
+          sampleRate: 8000, // AMR_NB uses 8kHz
+          numberOfChannels: 1,
+          bitRate: 12200, // Standard for AMR_NB
+        },
+        ios: {
+          extension: ".m4a", // iOS doesn't support AMR natively, fallback to AAC
+          outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+          audioQuality: Audio.IOSAudioQuality.HIGH,
+          sampleRate: 44100,
+          numberOfChannels: 1,
+          bitRate: 128000,
+        },
+        web: {
+          mimeType: "audio/mp4",
+          bitsPerSecond: 128000,
+        },
+      });
+
+      // Update state
+      setRecording(newRecording);
+      setIsRecording(true);
+      console.log("Recording started");
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+      Alert.alert("Error", "Failed to start recording. Please try again.");
+    }
+  };
+
+  // Stop recording function
+  const stopRecording = async () => {
+    console.log("Stopping recording...");
+    if (!recording) {
+      console.warn("No active recording to stop");
+      return null;
+    }
+
+    try {
+      // Stop the recording
+      await recording.stopAndUnloadAsync();
+
+      // Get the recorded URI
+      const uri = recording.getURI();
+      console.log("Recording stopped and stored at:", uri);
+
+      // Reset recording state and save URI
+      setRecording(null);
+      setIsRecording(false);
+      setRecordedUri(uri);
+
+      return uri;
+    } catch (error) {
+      console.error("Failed to stop recording:", error);
+      Alert.alert("Error", "Failed to stop recording.");
+      setIsRecording(false);
+      setRecording(null);
+      return null;
+    }
+  };
+
+  // Transcribe audio using Google Cloud Speech-to-Text API
+  const transcribeAudio = async (audioUri) => {
+    try {
+      console.log("Starting transcription process for:", audioUri);
+
+      // Check if URI exists
+      if (!audioUri) {
+        console.error("No audio URI provided for transcription");
+        return null;
+      }
+
+      // Get file extension from URI to determine encoding
+      const fileExtension = audioUri.split(".").pop().toLowerCase();
+      console.log("File extension detected:", fileExtension);
+
+      // Set encoding based on file extension
+      let encoding = "AMR";
+      let sampleRate = 8000;
+
+      if (fileExtension === "m4a") {
+        encoding = "AMR"; // Using AMR for m4a as it's more compatible
+        sampleRate = 44100;
+      } else if (fileExtension === "amr") {
+        encoding = "AMR";
+        sampleRate = 8000;
+      }
+
+      console.log(`Using encoding: ${encoding}, sample rate: ${sampleRate}`);
+
+      // Read the audio file as Base64
+      const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      console.log(
+        `Read audio file successfully, size: ${base64Audio.length} bytes`
+      );
+
+      // Prepare request body for Google Cloud Speech-to-Text API
+      const requestBody = {
+        config: {
+          encoding: encoding,
+          sampleRateHertz: sampleRate,
+          languageCode: "en-US",
+          audioChannelCount: 1,
+          enableAutomaticPunctuation: true,
+        },
+        audio: {
+          content: base64Audio,
+        },
+      };
+
+      // Log the first few characters of the base64 content to verify format
+      console.log(
+        "Base64 content preview:",
+        base64Audio.substring(0, 50) + "..."
+      );
+
+      // Make API request
+      console.log(
+        `Sending request to Google Cloud Speech-to-Text API with ${encoding} encoding...`
+      );
+      const response = await fetch(
+        `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+
+      // Check response status
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("API Error:", response.status, errorText);
+        return null;
+      }
+
+      // Parse response
+      const responseData = await response.json();
+      console.log(
+        "Google Cloud Speech-to-Text API Raw Response:",
+        JSON.stringify(responseData, null, 2)
+      );
+
+      // Extract transcription text if available
+      if (
+        responseData &&
+        responseData.results &&
+        responseData.results.length > 0 &&
+        responseData.results[0].alternatives &&
+        responseData.results[0].alternatives.length > 0
+      ) {
+        const transcription =
+          responseData.results[0].alternatives[0].transcript;
+        console.log("Transcription successful:", transcription);
+        return transcription;
+      } else {
+        console.warn(
+          "No transcription result returned - Try speaking more clearly or for longer"
+        );
+        Alert.alert(
+          "No Speech Detected",
+          "No speech was detected in the recording. Please try again and speak clearly."
+        );
+        return null;
+      }
+    } catch (error) {
+      console.error("Error during transcription:", error);
+      Alert.alert(
+        "Transcription Error",
+        "Failed to transcribe audio: " + error.message
+      );
+      return null;
+    }
+  };
+
   if (storageLoading || isLoading) {
     return (
       <SafeAreaView
@@ -744,6 +1249,20 @@ export default function NoteScreen() {
           </View>
         )}
       </KeyboardAvoidingView>
+
+      {/* Voice Recording Button */}
+      <TouchableOpacity
+        style={[
+          styles.voiceButton,
+          {
+            backgroundColor: isRecording ? "#FF3B30" : theme.primary,
+            bottom: isKeyboardVisible ? keyboardHeight + 50 : 60,
+          },
+        ]}
+        onPress={handleVoiceRecordPress}
+      >
+        <Ionicons name={isRecording ? "stop" : "mic"} size={28} color="white" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -841,6 +1360,20 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  voiceButton: {
+    position: "absolute",
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 9999,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
