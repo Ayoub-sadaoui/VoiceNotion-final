@@ -4,10 +4,36 @@
 .blocknote-editor {
   height: 100%;
   width: 100%;
-  padding: 16px;
-  overflow-y: auto;
+  padding: 16px 16px 1200px 16px; /* Increased bottom padding to allow more scrolling space */
+  overflow-y: auto !important; /* Force overflow to be auto */
   background-color: white;
   outline: none;
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+}
+
+/* Fix for content visibility when scrolling */
+.bn-container {
+  min-height: 100%;
+  position: relative;
+}
+
+/* Custom scroll container styles */
+.editor-scroll-container {
+  height: 100% !important;
+  width: 100% !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  position: relative !important;
+  flex: 1 !important;
+  padding-bottom: 120px !important; /* Space for keyboard toolbar */
+}
+
+/* Ensure proper scroll area */
+body,
+html,
+#root {
+  height: 100%;
+  overflow: hidden;
 }
 
 /* Ensure editor content is editable with proper cursor */
@@ -20,7 +46,7 @@
 
 /* Disable the default selection toolbar (copy, paste, etc.) */
 .blocknote-editor * {
-  -webkit-touch-callout: none;
+  -webkit-touch-callout: none !important;
   -webkit-user-select: none;
   -khtml-user-select: none;
   -moz-user-select: none;
@@ -69,13 +95,99 @@ body {
 }
 
 /* Fix toolbar positioning for mobile */
-.bn-container .bn-formatting-toolbar {
+.bn-container .bn-formatting-toolbar,
+.custom-formatting-toolbar {
   position: sticky !important;
   top: 0;
+
   z-index: 100;
+  width: 100% !important;
+  max-width: 100vw !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  padding: 6px !important;
+  white-space: nowrap !important;
+  scrollbar-width: none !important;
+  scroll-behavior: smooth !important;
+  -ms-overflow-style: none !important;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.bn-container .bn-formatting-toolbar::-webkit-scrollbar,
+.custom-formatting-toolbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* Ensure all clickable elements work */
 * {
   touch-action: auto;
+}
+
+/* Add some spacing for the content blocks */
+.blocknote-editor {
+  padding: 0 16px;
+  overflow: auto;
+}
+
+/* Ensure content is visible when scrolling to the bottom */
+.ProseMirror {
+  min-height: calc(
+    100vh - 100px
+  ); /* Make ProseMirror take at least full viewport height minus some space for toolbars */
+  padding-bottom: 300px; /* Additional padding at the bottom */
+}
+
+/* Fix for scrolling issues */
+.blocknote-editor > div {
+  min-height: 100%;
+}
+
+/* Custom formatting toolbar styles */
+.custom-formatting-toolbar {
+  background-color: white !important;
+  border-bottom: 1px solid #eee !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+  min-width: min-content !important; /* Ensure toolbar doesn't shrink smaller than content */
+}
+
+/* Make formatting toolbar buttons stay in line */
+.custom-formatting-toolbar > * {
+  flex-shrink: 0 !important;
+}
+
+/* Disable iOS text selection menu */
+.ProseMirror *::selection {
+  -webkit-touch-callout: none !important;
+}
+
+/* Override user selection for webview */
+.custom-editor {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: text !important;
+}
+
+/* Disable selection handles */
+:root {
+  --webkit-user-select: text !important;
+}
+
+/* Disable default browser behavior on long press */
+.bn-container,
+.blocknote-editor,
+.ProseMirror,
+.ProseMirror * {
+  -webkit-touch-callout: none !important;
+}
+
+/* Ensure the toolbar doesn't exceed screen width */
+@media (max-width: 480px) {
+  .bn-container .bn-formatting-toolbar .bn-button {
+    padding: 4px !important;
+    margin: 0 1px !important;
+  }
 }

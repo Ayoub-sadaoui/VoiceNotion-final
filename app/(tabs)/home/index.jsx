@@ -401,21 +401,50 @@ export default function HomeScreen() {
   // Handle creating a new page
   const handleCreatePage = async () => {
     try {
+      console.log("Creating new root page...");
+
       // Create a new page at the root level (no parent)
       const newPage = await createNewPage(null, "Untitled Page", "📄");
+
+      if (!newPage || !newPage.id) {
+        console.error("Failed to create new page: Invalid page data returned");
+        return;
+      }
+
+      console.log("Created new page successfully, ID:", newPage.id);
 
       // Navigate using simple string interpolation
       router.push(`/note/${newPage.id}`);
     } catch (error) {
       console.error("Error creating new page:", error);
+
+      // Show error toast
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to create new page. Please try again.",
+        position: "bottom",
+        visibilityTime: 3000,
+      });
     }
   };
 
   // Handle creating a subpage
   const handleAddSubpage = async (parentId) => {
     try {
+      console.log("Creating new subpage with parent:", parentId);
+
       // Create a new page as a child of the selected page
       const newPage = await createNewPage(parentId, "Untitled Page", "📄");
+
+      if (!newPage || !newPage.id) {
+        console.error(
+          "Failed to create new subpage: Invalid page data returned"
+        );
+        return;
+      }
+
+      console.log("Created new subpage successfully, ID:", newPage.id);
 
       // Ensure the parent is expanded
       setExpandedIds((prev) => ({
@@ -427,6 +456,15 @@ export default function HomeScreen() {
       router.push(`/note/${newPage.id}`);
     } catch (error) {
       console.error("Error creating subpage:", error);
+
+      // Show error toast
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to create subpage. Please try again.",
+        position: "bottom",
+        visibilityTime: 3000,
+      });
     }
   };
 
@@ -470,57 +508,6 @@ export default function HomeScreen() {
         </View>
       ) : (
         <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-          {/* Test navigation buttons */}
-          <View style={styles.testButtonsContainer}>
-            <TouchableOpacity
-              style={[styles.testButton, { backgroundColor: theme.primary }]}
-              onPress={() => router.push("/note")}
-            >
-              <Text style={styles.testButtonText}>Go to Note Index</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.testButton, { backgroundColor: theme.secondary }]}
-              onPress={() => {
-                // Get the first page ID if available
-                if (pages && pages.length > 0) {
-                  const testPageId = pages[0].id;
-                  console.log(
-                    "Testing navigation to specific page:",
-                    testPageId
-                  );
-                  router.push(`/note/${testPageId}`);
-                } else {
-                  alert("No pages available to test with");
-                }
-              }}
-            >
-              <Text style={styles.testButtonText}>Test Page Navigation</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.testButton, { backgroundColor: theme.primary }]}
-              onPress={() => router.push("/test")}
-            >
-              <Text style={styles.testButtonText}>Test Route</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.testButton, { backgroundColor: "#4CAF50" }]}
-              onPress={async () => {
-                const created = await createTestPages();
-                if (created) {
-                  alert("Test pages created successfully!");
-                } else {
-                  alert("Test pages already exist.");
-                }
-                loadPages();
-              }}
-            >
-              <Text style={styles.testButtonText}>Create Test Pages</Text>
-            </TouchableOpacity>
-          </View>
-
           <FlatList
             data={pageTree}
             keyExtractor={(item) => item.id}

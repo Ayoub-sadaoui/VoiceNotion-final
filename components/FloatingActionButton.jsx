@@ -17,7 +17,7 @@ import { useTheme } from "../utils/themeContext";
 const FloatingActionButton = ({ onPress, icon, label, isExtended = false }) => {
   const { theme } = useTheme();
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const shadowAnim = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
   const [isPressed, setIsPressed] = useState(false);
 
   // Handle button press animation
@@ -29,10 +29,10 @@ const FloatingActionButton = ({ onPress, icon, label, isExtended = false }) => {
         friction: 5,
         useNativeDriver: true,
       }),
-      Animated.timing(shadowAnim, {
-        toValue: 1,
+      Animated.timing(opacityAnim, {
+        toValue: 0.9,
         duration: 150,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }),
     ]).start();
   };
@@ -46,29 +46,13 @@ const FloatingActionButton = ({ onPress, icon, label, isExtended = false }) => {
         tension: 40,
         useNativeDriver: true,
       }),
-      Animated.timing(shadowAnim, {
-        toValue: 0,
+      Animated.timing(opacityAnim, {
+        toValue: 1,
         duration: 150,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }),
     ]).start();
   };
-
-  // Calculate shadow properties based on animation
-  const shadowOpacity = shadowAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.25, 0.15],
-  });
-
-  const shadowRadius = shadowAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [4, 2],
-  });
-
-  const elevation = shadowAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [6, 3],
-  });
 
   return (
     <Animated.View
@@ -76,8 +60,7 @@ const FloatingActionButton = ({ onPress, icon, label, isExtended = false }) => {
         styles.fabContainer,
         {
           transform: [{ scale: scaleAnim }],
-          shadowOpacity,
-          shadowRadius,
+          opacity: opacityAnim,
         },
       ]}
     >
@@ -109,6 +92,8 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
     elevation: 5,
     zIndex: 10,
   },

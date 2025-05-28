@@ -194,6 +194,10 @@ export default function NoteScreen() {
 
       // If we have the editor content, check for any page links that don't belong
       if (editorRef.current && editorContent) {
+        console.log(
+          `Validating page links - ${childPages.length} nested pages available`
+        );
+
         // Get all page links in the current content
         const pageLinkBlocks = [];
         editorContent.forEach((block) => {
@@ -209,6 +213,11 @@ export default function NoteScreen() {
         console.log(
           `Found ${pageLinkBlocks.length} page link blocks in editor content:`
         );
+
+        // Skip validation if there are no page links
+        if (pageLinkBlocks.length === 0) {
+          return;
+        }
 
         // Collect IDs of page links that don't match any child page
         const invalidLinkIds = [];
@@ -235,26 +244,76 @@ export default function NoteScreen() {
             `Cleaning up ${invalidLinkIds.length} invalid page links`
           );
 
-          // Remove the invalid page links
-          if (editorRef.current.removePageLinks) {
-            editorRef.current.removePageLinks(invalidLinkIds);
-          } else {
-            // Fallback to removing one by one
-            invalidLinkIds.forEach((pageId) => {
-              if (editorRef.current.removePageLink) {
-                editorRef.current.removePageLink(pageId);
-              }
-            });
+          // Create a modified copy of the content with links removed
+          const modifiedContent = [...editorContent];
+          let contentChanged = false;
+
+          // Remove the links from our local copy without using editor methods
+          // that would trigger events and cause a full save cycle
+          for (let i = modifiedContent.length - 1; i >= 0; i--) {
+            const block = modifiedContent[i];
+            if (
+              block.type === "pageLink" &&
+              invalidLinkIds.includes(block.props.pageId)
+            ) {
+              // Replace the invalid page link with a paragraph
+              modifiedContent[i] = {
+                type: "paragraph",
+                props: {
+                  textColor: "default",
+                  backgroundColor: "default",
+                  textAlignment: "left",
+                },
+                content: [
+                  {
+                    type: "text",
+                    text: block.props.pageTitle || "Removed link",
+                    styles: {},
+                  },
+                ],
+                children: [],
+              };
+              contentChanged = true;
+            }
           }
 
-          // Force a save to update the content
-          handleSave();
+          // Only update if we actually changed something
+          if (contentChanged) {
+            // Update the editor directly without triggering the save cycle
+            if (editorRef.current && editorRef.current.setContent) {
+              editorRef.current.setContent(modifiedContent);
+            }
+
+            // Update state with modified content
+            setEditorContent(modifiedContent);
+
+            // Save directly without going through the validation cycle again
+            const contentJsonString = JSON.stringify(modifiedContent);
+            const updatedPage = {
+              ...currentPage,
+              contentJson: contentJsonString,
+              title: title,
+              icon: icon,
+              updatedAt: Date.now(),
+            };
+
+            try {
+              const savedPage = await savePage(updatedPage);
+              console.log(
+                "Page saved successfully after link cleanup:",
+                savedPage.id
+              );
+              setCurrentPage(savedPage);
+            } catch (saveErr) {
+              console.error("Error saving page after link cleanup:", saveErr);
+            }
+          }
         }
       }
     } catch (err) {
       console.error("Error loading nested pages:", err);
     }
-  }, [currentPage, getChildrenOfPage, editorContent, handleSave]);
+  }, [currentPage, getChildrenOfPage, editorContent, savePage, title, icon]);
 
   // Effect to load nested pages when current page changes
   useEffect(() => {
@@ -621,13 +680,7 @@ export default function NoteScreen() {
       />
 
       {/* Back button */}
-      <TouchableOpacity
-        style={[
-          styles.backButton,
-          { backgroundColor: theme.surface || "#F2F2F7" },
-        ]}
-        onPress={handleGoBack}
-      >
+      <TouchableOpacity style={[styles.backButton]} onPress={handleGoBack}>
         <Ionicons name="arrow-back" size={24} color={theme.text} />
       </TouchableOpacity>
 
@@ -691,29 +744,6 @@ export default function NoteScreen() {
           </View>
         )}
       </KeyboardAvoidingView>
-
-      {/* Debug button in dev mode */}
-      {__DEV__ && (
-        <TouchableOpacity
-          style={[styles.debugButton, { backgroundColor: theme.primary }]}
-          onPress={() => {
-            const debugInfo = {
-              pageId: currentPage.id,
-              parentId: currentPage.parentId,
-              title: title,
-              icon: icon,
-              hasContent: !!editorContent,
-              initialContentBlocks: initialContent ? initialContent.length : 0,
-              updatedAt: new Date(currentPage.updatedAt).toLocaleString(),
-            };
-
-            console.log("Page Debug Info:", debugInfo);
-            alert(`Debug Info:\n${JSON.stringify(debugInfo, null, 2)}`);
-          }}
-        >
-          <MaterialIcons name="bug-report" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      )}
     </View>
   );
 }
@@ -726,7 +756,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     position: "absolute",
-    top: 50,
+    top: 20,
     left: 15,
     zIndex: 10,
     width: 40,
@@ -734,17 +764,12 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
   },
   savingIndicator: {
     position: "absolute",
     flexDirection: "row",
     alignItems: "center",
-    top: 50,
+    top: 20,
     right: 15,
     zIndex: 10,
     paddingVertical: 6,
@@ -760,7 +785,7 @@ const styles = StyleSheet.create({
   titleContainer: {
     flexDirection: "row",
     alignItems: "center",
-    paddingTop: 100,
+    paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 10,
     width: "100%",
@@ -771,12 +796,10 @@ const styles = StyleSheet.create({
   },
   titleInput: {
     flex: 1,
-    fontSize: 28,
+    fontSize: 36,
     fontWeight: "bold",
     paddingVertical: 8,
     paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.1)",
   },
   editorContainer: {
     flex: 1,

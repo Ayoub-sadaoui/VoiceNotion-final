@@ -10,9 +10,7 @@ import {
   CreateLinkButton,
   FormattingToolbar,
   FormattingToolbarController,
-  NestBlockButton,
   TextAlignButton,
-  UnnestBlockButton,
   useCreateBlockNote,
   createReactBlockSpec,
 } from "@blocknote/react";
@@ -74,14 +72,15 @@ const PageLinkBlock = createReactBlockSpec(
           style={{
             display: "flex",
             alignItems: "center",
-            padding: "12px",
-            margin: "10px 0",
+            padding: "6px 12px",
+            margin: "4px 0",
             borderRadius: "8px",
             background: "rgba(0, 120, 212, 0.1)",
             cursor: "pointer",
             border: "1px solid rgba(0, 120, 212, 0.3)",
             transition: "all 0.2s ease",
             boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            width: "100%",
           }}
           onClick={handleClick}
           onMouseOver={(e) => {
@@ -124,87 +123,13 @@ const PageLinkBlock = createReactBlockSpec(
   }
 );
 
-// Create custom schema with our page link block
+// Create custom schema with our custom blocks
 const schema = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
     pageLink: PageLinkBlock,
   },
 });
-
-// Custom toolbar with page link insertion
-const CustomToolbar = ({ editor, onCreatePageLink }) => {
-  return (
-    <FormattingToolbar>
-      <BlockTypeSelect editor={editor} />
-      <div
-        style={{
-          width: 1,
-          backgroundColor: "#ddd",
-          height: 24,
-          margin: "0 10px",
-        }}
-      />
-      <BasicTextStyleButton editor={editor} />
-      <ColorStyleButton editor={editor} />
-      <TextAlignButton editor={editor} />
-      <CreateLinkButton editor={editor} />
-      <div
-        style={{
-          width: 1,
-          backgroundColor: "#ddd",
-          height: 24,
-          margin: "0 10px",
-        }}
-      />
-      <NestBlockButton editor={editor} />
-      <UnnestBlockButton editor={editor} />
-      <div
-        style={{
-          width: 1,
-          backgroundColor: "#ddd",
-          height: 24,
-          margin: "0 10px",
-        }}
-      />
-      <button
-        className="bn-button"
-        onClick={onCreatePageLink}
-        title="Insert Page Link"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          padding: "4px 8px",
-          cursor: "pointer",
-          backgroundColor: "transparent",
-          border: "none",
-          borderRadius: "4px",
-          color: "#444",
-        }}
-        onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#f0f0f0")}
-        onMouseOut={(e) =>
-          (e.currentTarget.style.backgroundColor = "transparent")
-        }
-      >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-          <line x1="9" y1="15" x2="15" y2="15"></line>
-        </svg>
-        <span style={{ marginLeft: "5px" }}>Page</span>
-      </button>
-    </FormattingToolbar>
-  );
-};
 
 // Main editor component
 const HelloWorld = forwardRef((props, ref) => {
@@ -622,8 +547,8 @@ const HelloWorld = forwardRef((props, ref) => {
       return (
         <div
           style={{
-            position: "absolute",
-            bottom: `${keyboardHeight}px`,
+            position: "fixed",
+            bottom: keyboardHeight + 50,
             left: 0,
             right: 0,
             zIndex: 1000,
@@ -732,7 +657,20 @@ const HelloWorld = forwardRef((props, ref) => {
 
   // Renders the editor instance using a React component
   return (
-    <div style={{ height: "100%", width: "100%" }}>
+    <div
+      style={{
+        height: "100%",
+        width: "100%",
+
+        overflowY: "auto",
+        overflowX: "hidden",
+        WebkitOverflowScrolling: "touch",
+        position: "relative",
+        display: "flex",
+        flexDirection: "column",
+      }}
+      className="editor-scroll-container"
+    >
       <BlockNoteView
         editor={editor}
         editable={true}
@@ -745,11 +683,74 @@ const HelloWorld = forwardRef((props, ref) => {
             onChange(editor.topLevelBlocks);
           }
         }}
-        // Replace default toolbar with our custom one
-        formattingToolbar={(props) => (
-          <CustomToolbar {...props} onCreatePageLink={handleCreatePageLink} />
-        )}
-      />
+        formattingToolbar={false}
+        domAttributes={{
+          editor: {
+            class: "blocknote-editor custom-editor",
+            style:
+              "height: 100%; min-height: 150px; width: 100%; user-select: text; -webkit-touch-callout: none;",
+          },
+          block: {
+            style: "margin: 0.5em 0;",
+          },
+        }}
+      >
+        <FormattingToolbarController
+          formattingToolbar={() => (
+            <div
+              style={{
+                width: "96%",
+                maxWidth: "100vw",
+                overflow: "hidden",
+              }}
+            >
+              <FormattingToolbar className="custom-formatting-toolbar bn-formatting-toolbar">
+                <BlockTypeSelect key="blockTypeSelect" />
+
+                <BasicTextStyleButton
+                  basicTextStyle="bold"
+                  key="boldStyleButton"
+                />
+                <BasicTextStyleButton
+                  basicTextStyle="italic"
+                  key="italicStyleButton"
+                />
+                <BasicTextStyleButton
+                  basicTextStyle="underline"
+                  key="underlineStyleButton"
+                />
+
+                <TextAlignButton
+                  textAlignment={"left"}
+                  key={"textAlignLeftButton"}
+                />
+                <TextAlignButton
+                  textAlignment={"center"}
+                  key={"textAlignCenterButton"}
+                />
+                <TextAlignButton
+                  textAlignment={"right"}
+                  key={"textAlignRightButton"}
+                />
+                <ColorStyleButton key="colorStyleButton" />
+
+                <div
+                  style={{
+                    width: 1,
+                    backgroundColor: "#ddd",
+                    height: 24,
+                    margin: "0 10px",
+                    flexShrink: 0,
+                  }}
+                />
+
+                <CreateLinkButton key="createLinkButton" />
+              </FormattingToolbar>
+            </div>
+          )}
+        />
+      </BlockNoteView>
+
       {renderKeyboardToolbar()}
       {renderDeleteConfirmDialog()}
     </div>
