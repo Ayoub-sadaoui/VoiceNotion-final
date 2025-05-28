@@ -401,21 +401,50 @@ export default function HomeScreen() {
   // Handle creating a new page
   const handleCreatePage = async () => {
     try {
+      console.log("Creating new root page...");
+
       // Create a new page at the root level (no parent)
       const newPage = await createNewPage(null, "Untitled Page", "📄");
+
+      if (!newPage || !newPage.id) {
+        console.error("Failed to create new page: Invalid page data returned");
+        return;
+      }
+
+      console.log("Created new page successfully, ID:", newPage.id);
 
       // Navigate using simple string interpolation
       router.push(`/note/${newPage.id}`);
     } catch (error) {
       console.error("Error creating new page:", error);
+
+      // Show error toast
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to create new page. Please try again.",
+        position: "bottom",
+        visibilityTime: 3000,
+      });
     }
   };
 
   // Handle creating a subpage
   const handleAddSubpage = async (parentId) => {
     try {
+      console.log("Creating new subpage with parent:", parentId);
+
       // Create a new page as a child of the selected page
       const newPage = await createNewPage(parentId, "Untitled Page", "📄");
+
+      if (!newPage || !newPage.id) {
+        console.error(
+          "Failed to create new subpage: Invalid page data returned"
+        );
+        return;
+      }
+
+      console.log("Created new subpage successfully, ID:", newPage.id);
 
       // Ensure the parent is expanded
       setExpandedIds((prev) => ({
@@ -427,6 +456,15 @@ export default function HomeScreen() {
       router.push(`/note/${newPage.id}`);
     } catch (error) {
       console.error("Error creating subpage:", error);
+
+      // Show error toast
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to create subpage. Please try again.",
+        position: "bottom",
+        visibilityTime: 3000,
+      });
     }
   };
 

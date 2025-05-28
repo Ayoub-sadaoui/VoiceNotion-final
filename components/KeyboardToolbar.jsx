@@ -7,11 +7,15 @@ import { useTheme } from "../utils/themeContext";
 const ToolbarButton = ({ iconType, onPress, isActive, tooltip }) => {
   // Try to use the theme context, but provide fallback values if not available
   let theme = { accentColor: "#007AFF" };
-const themeContext = useTheme?.();
-if (themeContext) {
-  theme  = themeContext.theme  ?? theme;
-  isDark = themeContext.isDark ?? isDark;
-}
+  let isDark = false;
+
+  try {
+    const themeContext = useTheme();
+    if (themeContext) {
+      theme = themeContext.theme || theme;
+      isDark = themeContext.isDark || isDark;
+    }
+  } catch (error) {
     // Theme context not available, use fallback values
     console.log("Theme context not available, using fallback values");
   }
