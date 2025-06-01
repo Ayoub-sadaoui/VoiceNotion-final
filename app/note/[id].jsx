@@ -1,11 +1,4 @@
-import React, {
-  useEffect,
-  useState,
-  useRef,
-  useCallback,
-  forwardRef,
-  useImperativeHandle,
-} from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -21,87 +14,37 @@ import {
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system";
 import { useTheme } from "../../utils/themeContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import usePageStorage from "../../hooks/usePageStorage";
-import HelloWorld from "../../components/Editor.web";
+import Editor from "../../components/Editor";
 import debounce from "lodash.debounce";
 
-// API Key for Google Cloud Speech-to-Text
-// SECURITY WARNING: For production, this should be moved to a secure backend
-const GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY =
-  "AIzaSyBUjmj5WK8mqBhLlhyx-5-J3blXa9v8ZzQ"; // REPLACE THIS!
+// Import our custom components
+import VoiceRecorder from "../../components/note/VoiceRecorder";
+import PageHeader from "../../components/note/PageHeader";
+import PageManager from "../../components/note/PageManager";
 
-// This component is a native wrapper around our DOM Editor.web.jsx component
-const Editor = forwardRef((props, ref) => {
-  // ... existing code ...
-
-  // Expose methods to parent components
-  useImperativeHandle(ref, () => ({
-    // Get the editor content
-    getContent: () => {
-      if (editorRef.current) {
-        return editorRef.current.getContent();
-      }
-      return null;
+// This function directly creates and inserts a new paragraph block into editor content
+const createParagraphBlock = (text) => {
+  // Create a new paragraph block with the transcribed text
+  return {
+    type: "paragraph",
+    props: {
+      textColor: "default",
+      backgroundColor: "default",
+      textAlignment: "left",
     },
-
-    // Insert a page link block
-    insertPageLink: (pageId, pageTitle, pageIcon) => {
-      if (editorRef.current) {
-        editorRef.current.insertPageLink(pageId, pageTitle, pageIcon);
-      }
-    },
-
-    // Add a method to insert transcribed text
-    insertTranscription: (text) => {
-      if (editorRef.current && editorRef.current._blockNoteEditor) {
-        try {
-          // Create a new paragraph block
-          const newBlock = { type: "paragraph", content: text };
-
-          // Try to insert after the last block
-          if (
-            editorRef.current._blockNoteEditor.document &&
-            editorRef.current._blockNoteEditor.document.length > 0
-          ) {
-            const lastBlockId =
-              editorRef.current._blockNoteEditor.document[
-                editorRef.current._blockNoteEditor.document.length - 1
-              ].id;
-            editorRef.current._blockNoteEditor.insertBlocks(
-              [newBlock],
-              lastBlockId,
-              "after"
-            );
-            return true;
-          } else {
-            // Try inserting at root
-            editorRef.current._blockNoteEditor.insertBlocks(
-              [newBlock],
-              "root",
-              "after"
-            );
-            return true;
-          }
-        } catch (error) {
-          console.error("Error inserting transcription:", error);
-          return false;
-        }
-      }
-      return false;
-    },
-
-    // Delete the current page
-    deleteCurrentPage: () => {
-      if (editorRef.current && currentPageId) {
-        editorRef.current.deleteCurrentPage(currentPageId);
-      }
-    },
-  }));
-}); // Close the Editor component
+    content: [
+      {
+        type: "text",
+        text: text,
+        styles: {},
+      },
+    ],
+    children: [],
+  };
+};
 
 export default function NoteScreen() {
   const { theme, isDark } = useTheme();
@@ -113,9 +56,9 @@ export default function NoteScreen() {
   // Get page storage functionality
   const {
     getPageById,
-    savePage,
+    savePage: storageSavePage,
     createNewPage,
-    deletePage,
+    deletePage: storageDeletePage,
     loading: storageLoading,
     error,
     getChildrenOfPage,
@@ -133,11 +76,6 @@ export default function NoteScreen() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [nestedPages, setNestedPages] = useState([]);
-
-  // Recording state
-  const [recording, setRecording] = useState(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordedUri, setRecordedUri] = useState(null);
 
   // Listen for keyboard events
   useEffect(() => {
@@ -387,7 +325,7 @@ export default function NoteScreen() {
             };
 
             try {
-              const savedPage = await savePage(updatedPage);
+              const savedPage = await storageSavePage(updatedPage);
               console.log(
                 "Page saved successfully after link cleanup:",
                 savedPage.id
@@ -402,7 +340,14 @@ export default function NoteScreen() {
     } catch (err) {
       console.error("Error loading nested pages:", err);
     }
-  }, [currentPage, getChildrenOfPage, editorContent, savePage, title, icon]);
+  }, [
+    currentPage,
+    getChildrenOfPage,
+    editorContent,
+    storageSavePage,
+    title,
+    icon,
+  ]);
 
   // Effect to load nested pages when current page changes
   useEffect(() => {
@@ -432,7 +377,7 @@ export default function NoteScreen() {
           updatedAt: Date.now(),
         };
 
-        const savedPage = await savePage(updatedPage);
+        const savedPage = await storageSavePage(updatedPage);
         console.log("Auto-save completed successfully");
         setCurrentPage(savedPage);
       } catch (err) {
@@ -441,7 +386,7 @@ export default function NoteScreen() {
         setIsSaving(false);
       }
     }, 1000),
-    [currentPage, savePage, title, icon]
+    [currentPage, storageSavePage, title, icon]
   );
 
   // Handle content change from editor
@@ -464,7 +409,10 @@ export default function NoteScreen() {
         );
       }
 
+      // Always update our local state to stay in sync with the editor
       setEditorContent(content);
+
+      // Debounce the saving to avoid too many writes
       debouncedSave(content);
     },
     [debouncedSave]
@@ -472,40 +420,19 @@ export default function NoteScreen() {
 
   // Create and navigate to a new nested page
   const handleInsertNestedPage = async () => {
-    try {
-      setIsSaving(true);
-      // Create new page with current page as parent
-      const newPage = await createNewPage(currentPage.id, "New Page", "📄");
-      console.log("Created nested page:", newPage.id);
+    const newPage = await PageManager.createNestedPage(
+      currentPage,
+      createNewPage,
+      "New Page",
+      "📄"
+    );
 
-      // Insert a page link in the current editor
-      if (editorRef.current) {
-        try {
-          editorRef.current.insertPageLink(
-            newPage.id,
-            newPage.title,
-            newPage.icon
-          );
-          console.log("Page link inserted successfully");
-
-          // Save the current page with the new link
-          await handleSave();
-
-          // Show success message
-          // You could add a toast or alert here
-        } catch (insertError) {
-          console.error("Error inserting page link:", insertError);
-        }
-      }
-
-      setIsSaving(false);
-
-      // OPTIONAL: Navigate to the new page (comment this out if you want to stay on current page)
-      // router.push(`/note/${newPage.id}`);
-    } catch (err) {
-      console.error("Error creating nested page:", err);
-      setIsSaving(false);
-    }
+    await PageManager.insertPageLink(
+      editorRef,
+      newPage,
+      handleSave,
+      setIsSaving
+    );
   };
 
   // Handle navigation when a page link is clicked
@@ -534,51 +461,15 @@ export default function NoteScreen() {
 
   // Handle forced save (e.g., when leaving the page)
   const handleSave = async () => {
-    if (!currentPage) {
-      console.warn("Cannot save: No page loaded");
-      return false;
-    }
-
-    if (!editorContent) {
-      console.warn("Cannot save: No editor content available");
-      return true; // Not a critical error, content might just be empty
-    }
-
-    setIsSaving(true);
-    try {
-      console.log("Saving page content:", currentPage.id);
-
-      // Safely stringify the content
-      let contentJsonString;
-      try {
-        contentJsonString = JSON.stringify(editorContent);
-        console.log(
-          "Content serialized successfully, length:",
-          contentJsonString.length
-        );
-      } catch (serializeErr) {
-        console.error("Error serializing content:", serializeErr);
-        return false;
-      }
-
-      const updatedPage = {
-        ...currentPage,
-        contentJson: contentJsonString,
-        title: title,
-        icon: icon,
-        updatedAt: Date.now(),
-      };
-
-      const savedPage = await savePage(updatedPage);
-      console.log("Page saved successfully:", savedPage.id);
-      setCurrentPage(savedPage);
-      return true;
-    } catch (err) {
-      console.error("Error saving page:", err);
-      return false;
-    } finally {
-      setIsSaving(false);
-    }
+    return PageManager.savePage(
+      currentPage,
+      editorContent,
+      title,
+      icon,
+      storageSavePage,
+      setIsSaving,
+      setCurrentPage
+    );
   };
 
   // Handle title change with automatic saving
@@ -589,322 +480,26 @@ export default function NoteScreen() {
     }
   };
 
-  // Alternative approach to transcribe audio using file URI instead of Base64
-  const transcribeAudioAlternative = async (audioUri) => {
-    try {
-      console.log("Starting alternative transcription process for:", audioUri);
-
-      if (!audioUri) {
-        console.error("No audio URI provided for transcription");
-        return null;
-      }
-
-      // For debugging - add a short delay to ensure file is fully written
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Check if file exists and get info
-      const fileInfo = await FileSystem.getInfoAsync(audioUri);
-      console.log("File info:", fileInfo);
-
-      if (!fileInfo.exists) {
-        console.error("Audio file does not exist at specified URI");
-        return null;
-      }
-
-      // Get file extension from URI
-      const fileExtension = audioUri.split(".").pop().toLowerCase();
-      console.log("File extension:", fileExtension);
-
-      // Prepare request to Speech-to-Text API using custom approach - this is an alternative
-      // that we'll try if the direct Base64 approach fails
-
-      // First, try the main approach
-      const transcription = await transcribeAudio(audioUri);
-
-      if (transcription) {
-        return transcription;
-      } else {
-        console.log(
-          "Main transcription approach failed, please check your API key and account setup"
-        );
-        Alert.alert(
-          "Transcription Issue",
-          "There was a problem with the transcription service. Please verify your Google Cloud API key and ensure the Speech-to-Text API is enabled in your Google Cloud Console."
-        );
-        return null;
-      }
-    } catch (error) {
-      console.error("Error in alternative transcription method:", error);
-      return null;
+  // Handle icon change
+  const handleIconChange = (newIcon) => {
+    setIcon(newIcon);
+    if (currentPage) {
+      debouncedSave(editorContent || initialContent);
     }
   };
 
-  // Handle voice record button press
-  const handleVoiceRecordPress = async () => {
-    try {
-      // If we're already recording, stop the recording
-      if (isRecording) {
-        const uri = await stopRecording();
-        // Process the recording for transcription
-        if (uri) {
-          console.log("Starting transcription of recorded audio...");
-          const transcription = await transcribeAudioAlternative(uri);
-
-          // Check if we have valid transcription text
-          if (transcription) {
-            console.log("Final transcription result:", transcription);
-
-            // Debug available methods on the editor ref
-            console.log(
-              "Editor ref methods:",
-              Object.keys(editorRef.current || {})
-            );
-
-            // Check if editor reference exists
-            if (editorRef.current) {
-              try {
-                // Force direct access to the DOM component if it exists
-                if (
-                  editorRef.current._reactInternals?.child?.child?.stateNode
-                ) {
-                  console.log("Found DOM component via _reactInternals");
-                  const domComponent =
-                    editorRef.current._reactInternals.child.child.stateNode;
-                  if (
-                    typeof domComponent.insertTranscribedText === "function"
-                  ) {
-                    const success =
-                      domComponent.insertTranscribedText(transcription);
-                    if (success) {
-                      console.log(
-                        "Successfully inserted text via DOM component"
-                      );
-                      return;
-                    }
-                  }
-                }
-
-                // Try using the insertTranscribedText method first
-                if (
-                  typeof editorRef.current.insertTranscribedText === "function"
-                ) {
-                  const success =
-                    editorRef.current.insertTranscribedText(transcription);
-                  if (success) {
-                    console.log(
-                      "Successfully inserted transcription into editor"
-                    );
-                    return;
-                  } else {
-                    console.warn(
-                      "insertTranscribedText returned false, trying fallback approaches"
-                    );
-                  }
-                } else {
-                  console.warn(
-                    "insertTranscribedText method not found on editor ref"
-                  );
-                }
-
-                // Fallback approach - try to access the editor directly
-                if (typeof editorRef.current.getEditor === "function") {
-                  const editor = editorRef.current.getEditor();
-                  if (editor) {
-                    console.log("Got editor instance, inserting text directly");
-
-                    // Create a properly formatted paragraph block
-                    const newBlock = {
-                      type: "paragraph",
-                      props: {
-                        textColor: "default",
-                        backgroundColor: "default",
-                        textAlignment: "left",
-                      },
-                      content: [
-                        {
-                          type: "text",
-                          text: transcription,
-                          styles: {},
-                        },
-                      ],
-                      children: [],
-                    };
-
-                    // Get the current blocks
-                    const blocks = editor.topLevelBlocks;
-
-                    // Insert the block
-                    if (blocks && blocks.length > 0) {
-                      const lastBlock = blocks[blocks.length - 1];
-                      editor.insertBlocks([newBlock], lastBlock, "after");
-                      console.log(
-                        "Successfully inserted text using direct editor access"
-                      );
-                      return;
-                    } else {
-                      editor.insertBlocks([newBlock], null, "firstChild");
-                      console.log("Successfully inserted text at root level");
-                      return;
-                    }
-                  }
-                }
-
-                // If all else fails, show an alert with the transcription
-                Alert.alert("Transcription Result", transcription, [
-                  {
-                    text: "OK",
-                    onPress: () =>
-                      console.log("User acknowledged transcription"),
-                  },
-                ]);
-              } catch (editorError) {
-                console.error("Error inserting text into editor:", editorError);
-                // Show alert with transcription so user can manually copy
-                Alert.alert("Transcription Result", transcription, [
-                  {
-                    text: "OK",
-                    onPress: () =>
-                      console.log("User acknowledged transcription"),
-                  },
-                ]);
-              }
-            } else {
-              console.warn("Editor reference is not available");
-              // Show alert with transcription so user can manually copy
-              Alert.alert("Transcription Result", transcription, [
-                {
-                  text: "OK",
-                  onPress: () => console.log("User acknowledged transcription"),
-                },
-              ]);
-            }
-          } else {
-            console.warn("No transcription result available to insert");
-          }
-        }
-        return;
-      }
-
-      // Otherwise check permissions and start recording
-      console.log("Requesting microphone permission...");
-      const { status } = await Audio.requestPermissionsAsync();
-      console.log("Permission status:", status);
-
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "Microphone permission is needed to use voice recording features.",
-          [{ text: "OK" }]
-        );
-        return;
-      }
-
-      // Permission is granted, start recording
-      await startRecording();
-    } catch (error) {
-      console.error("Error in voice recording process:", error);
-      Alert.alert("Error", "Failed to handle voice recording.");
-    }
-  };
-
-  // Handle deleting the current page
+  // Handle deleting a page
   const handleDeletePage = async (pageId, isUserInitiated = true) => {
-    try {
-      if (!pageId) return;
-
-      console.log(
-        `Deleting page: ${pageId}, user initiated: ${isUserInitiated}`
-      );
-
-      // If this is the current page, we need to navigate away
-      const isCurrentPage = pageId === currentPage?.id;
-      const parentId = currentPage?.parentId;
-
-      // Get all pages that will be deleted (this page and its descendants)
-      const allPages = await loadAllPages();
-      const pagesToDelete = collectPageAndDescendants(allPages, pageId);
-
-      console.log(
-        `Deleting page ${pageId} and ${pagesToDelete.length - 1} descendants`
-      );
-
-      // Delete the page from storage
-      const result = await deletePage(pageId);
-
-      if (result) {
-        console.log("Page deleted successfully");
-
-        // If this was triggered by block deletion in the editor (not user initiated)
-        // and it's not the current page, we don't need to navigate
-        if (!isUserInitiated && !isCurrentPage) {
-          // Refresh nested pages
-          loadNestedPages();
-          return;
-        }
-
-        // For user-initiated deletion or if we're deleting the current page
-        if (isCurrentPage) {
-          // Navigate to parent page or home
-          if (parentId) {
-            router.replace(`/note/${parentId}`);
-          } else {
-            router.replace("/");
-          }
-        } else {
-          // Remove the page link block from the editor
-          if (editorRef.current) {
-            // Get IDs of all pages being deleted (including descendants)
-            const pageIdsToRemove = pagesToDelete.map((page) => page.id);
-
-            // Remove all page links at once if the new method is available
-            if (editorRef.current.removePageLinks) {
-              editorRef.current.removePageLinks(pageIdsToRemove);
-            } else {
-              // Fallback to removing one by one
-              editorRef.current.removePageLink(pageId);
-
-              // If there are descendants, remove their page links too
-              if (pagesToDelete.length > 1) {
-                pagesToDelete.forEach((page) => {
-                  if (page.id !== pageId) {
-                    editorRef.current.removePageLink(page.id);
-                  }
-                });
-              }
-            }
-          }
-
-          // Refresh nested pages
-          loadNestedPages();
-        }
-      }
-    } catch (err) {
-      console.error("Error deleting page:", err);
-    }
-  };
-
-  // Helper function to collect a page and all its descendants
-  const collectPageAndDescendants = (pages, rootId) => {
-    const result = [];
-
-    // Find the root page first
-    const rootPage = pages.find((page) => page.id === rootId);
-    if (rootPage) {
-      result.push(rootPage);
-    }
-
-    // Recursive function to find all children
-    const findChildren = (parentId) => {
-      const childrenPages = pages.filter((page) => page.parentId === parentId);
-
-      childrenPages.forEach((child) => {
-        result.push(child);
-        findChildren(child.id);
-      });
-    };
-
-    findChildren(rootId);
-    return result;
+    return PageManager.deletePage(
+      pageId,
+      currentPage,
+      loadAllPages,
+      storageDeletePage,
+      router,
+      editorRef,
+      loadNestedPages,
+      isUserInitiated
+    );
   };
 
   // Handle creating a nested page
@@ -933,201 +528,245 @@ export default function NoteScreen() {
     }
   };
 
-  // Start recording function
-  const startRecording = async () => {
+  // Create a direct insertion method that works with our current editorContent state
+  const insertTranscriptionDirectly = (transcription) => {
     try {
-      console.log("Starting recording...");
+      console.log("Attempting direct content insertion for transcription");
 
-      // Set audio mode for recording
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false, // Or true, depending on desired behavior
-        staysActiveInBackground: false,
-      });
+      // Use editorContent if available, fall back to initialContent
+      let currentContent = editorContent;
 
-      // Use AMR format which is well-supported by Google Speech-to-Text
-      const { recording: newRecording } = await Audio.Recording.createAsync({
-        android: {
-          extension: ".amr",
-          outputFormat: Audio.AndroidOutputFormat.AMR_NB,
-          audioEncoder: Audio.AndroidAudioEncoder.AMR_NB,
-          sampleRate: 8000, // AMR_NB uses 8kHz
-          numberOfChannels: 1,
-          bitRate: 12200, // Standard for AMR_NB
-        },
-        ios: {
-          extension: ".m4a", // iOS doesn't support AMR natively, fallback to AAC
-          outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
-          audioQuality: Audio.IOSAudioQuality.HIGH,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
-        web: {
-          mimeType: "audio/mp4",
-          bitsPerSecond: 128000,
-        },
-      });
-
-      // Update state
-      setRecording(newRecording);
-      setIsRecording(true);
-      console.log("Recording started");
-    } catch (error) {
-      console.error("Failed to start recording:", error);
-      Alert.alert("Error", "Failed to start recording. Please try again.");
-    }
-  };
-
-  // Stop recording function
-  const stopRecording = async () => {
-    console.log("Stopping recording...");
-    if (!recording) {
-      console.warn("No active recording to stop");
-      return null;
-    }
-
-    try {
-      // Stop the recording
-      await recording.stopAndUnloadAsync();
-
-      // Get the recorded URI
-      const uri = recording.getURI();
-      console.log("Recording stopped and stored at:", uri);
-
-      // Reset recording state and save URI
-      setRecording(null);
-      setIsRecording(false);
-      setRecordedUri(uri);
-
-      return uri;
-    } catch (error) {
-      console.error("Failed to stop recording:", error);
-      Alert.alert("Error", "Failed to stop recording.");
-      setIsRecording(false);
-      setRecording(null);
-      return null;
-    }
-  };
-
-  // Transcribe audio using Google Cloud Speech-to-Text API
-  const transcribeAudio = async (audioUri) => {
-    try {
-      console.log("Starting transcription process for:", audioUri);
-
-      // Check if URI exists
-      if (!audioUri) {
-        console.error("No audio URI provided for transcription");
-        return null;
-      }
-
-      // Get file extension from URI to determine encoding
-      const fileExtension = audioUri.split(".").pop().toLowerCase();
-      console.log("File extension detected:", fileExtension);
-
-      // Set encoding based on file extension
-      let encoding = "AMR";
-      let sampleRate = 8000;
-
-      if (fileExtension === "m4a") {
-        encoding = "AMR"; // Using AMR for m4a as it's more compatible
-        sampleRate = 44100;
-      } else if (fileExtension === "amr") {
-        encoding = "AMR";
-        sampleRate = 8000;
-      }
-
-      console.log(`Using encoding: ${encoding}, sample rate: ${sampleRate}`);
-
-      // Read the audio file as Base64
-      const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      console.log(
-        `Read audio file successfully, size: ${base64Audio.length} bytes`
-      );
-
-      // Prepare request body for Google Cloud Speech-to-Text API
-      const requestBody = {
-        config: {
-          encoding: encoding,
-          sampleRateHertz: sampleRate,
-          languageCode: "en-US",
-          audioChannelCount: 1,
-          enableAutomaticPunctuation: true,
-        },
-        audio: {
-          content: base64Audio,
-        },
-      };
-
-      // Log the first few characters of the base64 content to verify format
-      console.log(
-        "Base64 content preview:",
-        base64Audio.substring(0, 50) + "..."
-      );
-
-      // Make API request
-      console.log(
-        `Sending request to Google Cloud Speech-to-Text API with ${encoding} encoding...`
-      );
-      const response = await fetch(
-        `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody),
-        }
-      );
-
-      // Check response status
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("API Error:", response.status, errorText);
-        return null;
-      }
-
-      // Parse response
-      const responseData = await response.json();
-      console.log(
-        "Google Cloud Speech-to-Text API Raw Response:",
-        JSON.stringify(responseData, null, 2)
-      );
-
-      // Extract transcription text if available
       if (
-        responseData &&
-        responseData.results &&
-        responseData.results.length > 0 &&
-        responseData.results[0].alternatives &&
-        responseData.results[0].alternatives.length > 0
+        !currentContent ||
+        !Array.isArray(currentContent) ||
+        currentContent.length === 0
       ) {
-        const transcription =
-          responseData.results[0].alternatives[0].transcript;
-        console.log("Transcription successful:", transcription);
-        return transcription;
-      } else {
-        console.warn(
-          "No transcription result returned - Try speaking more clearly or for longer"
-        );
-        Alert.alert(
-          "No Speech Detected",
-          "No speech was detected in the recording. Please try again and speak clearly."
-        );
-        return null;
+        console.log("No valid editorContent, using initialContent instead");
+        currentContent = initialContent;
+
+        // If even initialContent is not valid, create a basic content structure
+        if (
+          !currentContent ||
+          !Array.isArray(currentContent) ||
+          currentContent.length === 0
+        ) {
+          console.log("Creating basic content structure");
+          currentContent = [
+            {
+              type: "paragraph",
+              props: {
+                textColor: "default",
+                backgroundColor: "default",
+                textAlignment: "left",
+              },
+              content: [
+                {
+                  type: "text",
+                  text: "Note",
+                  styles: {},
+                },
+              ],
+              children: [],
+            },
+          ];
+        }
       }
-    } catch (error) {
-      console.error("Error during transcription:", error);
-      Alert.alert(
-        "Transcription Error",
-        "Failed to transcribe audio: " + error.message
+
+      // Create a new paragraph block
+      const newBlock = createParagraphBlock(transcription);
+
+      // Create a copy of current content with new block appended
+      const updatedContent = [...currentContent, newBlock];
+      console.log(
+        `Adding new paragraph block, now ${updatedContent.length} blocks`
       );
-      return null;
+
+      // Force a reload of the editor content by temporarily setting initialContent to null
+      // then setting it to the updated content - this triggers a complete re-render
+      setInitialContent(null);
+
+      // Use setTimeout to ensure state updates happen in separate render cycles
+      setTimeout(() => {
+        // Update the state variables with the new content
+        setEditorContent(updatedContent);
+        setInitialContent(updatedContent);
+
+        console.log("Editor state updated with new content");
+
+        // Try to update the editor content directly if possible
+        if (editorRef.current) {
+          if (typeof editorRef.current.setContent === "function") {
+            console.log("Directly updating editor content via setContent");
+            editorRef.current.setContent(updatedContent);
+          } else if (
+            editorRef.current.getEditor &&
+            typeof editorRef.current.getEditor === "function"
+          ) {
+            try {
+              const editor = editorRef.current.getEditor();
+              if (editor && typeof editor.insertBlocks === "function") {
+                console.log("Inserting block directly via editor reference");
+                editor.insertBlocks([newBlock], null, "lastChild");
+              }
+            } catch (err) {
+              console.error("Error accessing editor:", err);
+            }
+          }
+        }
+      }, 50);
+
+      // Also directly update the page content with the changes
+      if (currentPage) {
+        console.log("Directly updating page contentJson");
+        const contentJsonString = JSON.stringify(updatedContent);
+        const updatedPage = {
+          ...currentPage,
+          contentJson: contentJsonString,
+          updatedAt: Date.now(),
+        };
+
+        // Save the page without using the debounce
+        setIsSaving(true);
+        storageSavePage(updatedPage)
+          .then(() => {
+            console.log("Page saved successfully with transcription");
+            setIsSaving(false);
+          })
+          .catch((err) => {
+            console.error("Error saving page with transcription:", err);
+            setIsSaving(false);
+          });
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error in direct content insertion:", error);
+      return false;
+    }
+  };
+
+  // Handle transcription completed from VoiceRecorder
+  const handleTranscriptionComplete = (transcription) => {
+    console.log("Transcription received in parent component:", transcription);
+
+    // Check if transcription is valid
+    if (
+      !transcription ||
+      typeof transcription !== "string" ||
+      transcription.trim() === ""
+    ) {
+      console.warn("Invalid transcription received");
+      return;
+    }
+
+    // Try DIRECT approach first - use our state management
+    const directSuccess = insertTranscriptionDirectly(transcription);
+    if (directSuccess) {
+      console.log(
+        "Successfully inserted transcription via direct state update"
+      );
+      return;
+    }
+
+    // If direct approach fails, try the standard approaches
+    try {
+      // Ensure editor reference exists
+      if (!editorRef.current) {
+        console.warn("Editor reference is not available");
+        Alert.alert("Transcription Result", transcription, [{ text: "OK" }]);
+        return;
+      }
+
+      // DIRECT DEBUG: Try to access the editor at every level of the reference chain
+      console.log("DEBUG: Starting direct insertion attempt");
+
+      // First try the standard way
+      if (typeof editorRef.current.insertTranscribedText === "function") {
+        console.log("DEBUG: Using standard insertTranscribedText method");
+        try {
+          const success =
+            editorRef.current.insertTranscribedText(transcription);
+          if (success) {
+            console.log(
+              "DEBUG: Successfully inserted transcription via standard method"
+            );
+            return;
+          }
+        } catch (error) {
+          console.error("DEBUG: Error in standard method:", error);
+        }
+      }
+
+      // Try to access internal editor directly
+      if (typeof editorRef.current.getEditor === "function") {
+        console.log("DEBUG: Trying to get editor directly");
+        try {
+          const editor = editorRef.current.getEditor();
+          if (editor) {
+            console.log("DEBUG: Got editor directly, attempting insertion");
+
+            // Create a paragraph block
+            const newBlock = {
+              type: "paragraph",
+              props: {
+                textColor: "default",
+                backgroundColor: "default",
+                textAlignment: "left",
+              },
+              content: [
+                {
+                  type: "text",
+                  text: transcription,
+                  styles: {},
+                },
+              ],
+              children: [],
+            };
+
+            console.log(
+              "DEBUG: Editor operations available:",
+              Object.keys(editor)
+            );
+
+            // Try inserting directly
+            if (typeof editor.insertBlocks === "function") {
+              console.log("DEBUG: Using insertBlocks");
+
+              if (editor.topLevelBlocks && editor.topLevelBlocks.length > 0) {
+                const lastBlock =
+                  editor.topLevelBlocks[editor.topLevelBlocks.length - 1];
+                editor.insertBlocks([newBlock], lastBlock, "after");
+                console.log(
+                  "DEBUG: Successfully inserted using direct editor.insertBlocks"
+                );
+                return;
+              } else {
+                editor.insertBlocks([newBlock], null, "firstChild");
+                console.log(
+                  "DEBUG: Successfully inserted at root using direct editor.insertBlocks"
+                );
+                return;
+              }
+            }
+
+            // Try another approach by getting the document
+            if (editor.document) {
+              console.log(
+                "DEBUG: Document available, length:",
+                editor.document.length
+              );
+            }
+          }
+        } catch (error) {
+          console.error("DEBUG: Error accessing direct editor:", error);
+        }
+      }
+
+      console.warn("DEBUG: All direct insertion approaches failed");
+      Alert.alert("Transcription Result", transcription, [{ text: "OK" }]);
+    } catch (error) {
+      console.error("Error in transcription handler:", error);
+      Alert.alert("Transcription Result", transcription, [{ text: "OK" }]);
     }
   };
 
@@ -1184,40 +823,17 @@ export default function NoteScreen() {
         }}
       />
 
-      {/* Back button */}
-      <TouchableOpacity style={[styles.backButton]} onPress={handleGoBack}>
-        <Ionicons name="arrow-back" size={24} color={theme.text} />
-      </TouchableOpacity>
-
-      {/* Save indicator */}
-      {isSaving && (
-        <View style={styles.savingIndicator}>
-          <ActivityIndicator size="small" color={theme.secondary} />
-          <Text style={[styles.savingText, { color: theme.secondaryText }]}>
-            Saving...
-          </Text>
-        </View>
-      )}
-
-      {/* Title area */}
-      <View style={styles.titleContainer}>
-        <Text style={[styles.iconDisplay, { color: theme.text }]}>{icon}</Text>
-
-        <TextInput
-          style={[
-            styles.titleInput,
-            {
-              color: theme.text,
-              borderBottomColor: `${theme.text}20`,
-            },
-          ]}
-          value={title}
-          onChangeText={handleTitleChange}
-          placeholder="Note Title"
-          placeholderTextColor={theme.secondaryText || "#999"}
-          maxLength={100}
-        />
-      </View>
+      {/* Page Header Component */}
+      <PageHeader
+        title={title}
+        icon={icon}
+        onTitleChange={handleTitleChange}
+        onIconChange={handleIconChange}
+        onBackPress={handleGoBack}
+        isSaving={isSaving}
+        theme={theme}
+        multilineTitle={true}
+      />
 
       {/* Editor */}
       <KeyboardAvoidingView
@@ -1226,7 +842,7 @@ export default function NoteScreen() {
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         {initialContent ? (
-          <HelloWorld
+          <Editor
             ref={editorRef}
             title={title}
             icon={icon}
@@ -1250,19 +866,13 @@ export default function NoteScreen() {
         )}
       </KeyboardAvoidingView>
 
-      {/* Voice Recording Button */}
-      <TouchableOpacity
-        style={[
-          styles.voiceButton,
-          {
-            backgroundColor: isRecording ? "#FF3B30" : theme.primary,
-            bottom: isKeyboardVisible ? keyboardHeight + 50 : 60,
-          },
-        ]}
-        onPress={handleVoiceRecordPress}
-      >
-        <Ionicons name={isRecording ? "stop" : "mic"} size={28} color="white" />
-      </TouchableOpacity>
+      {/* Voice Recorder Component */}
+      <VoiceRecorder
+        onTranscriptionComplete={handleTranscriptionComplete}
+        theme={theme}
+        isKeyboardVisible={isKeyboardVisible}
+        keyboardHeight={keyboardHeight}
+      />
     </View>
   );
 }
@@ -1272,53 +882,6 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
     height: "100%",
-  },
-  backButton: {
-    position: "absolute",
-    top: 20,
-    left: 15,
-    zIndex: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  savingIndicator: {
-    position: "absolute",
-    flexDirection: "row",
-    alignItems: "center",
-    top: 20,
-    right: 15,
-    zIndex: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: "rgba(0,0,0,0.1)",
-  },
-  savingText: {
-    marginLeft: 6,
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  titleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-    width: "100%",
-  },
-  iconDisplay: {
-    fontSize: 24,
-    marginRight: 10,
-  },
-  titleInput: {
-    flex: 1,
-    fontSize: 36,
-    fontWeight: "bold",
-    paddingVertical: 8,
-    paddingHorizontal: 4,
   },
   editorContainer: {
     flex: 1,
@@ -1352,34 +915,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
     color: "white",
-  },
-  debugButton: {
-    position: "absolute",
-    bottom: 20,
-    right: 20,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  voiceButton: {
-    position: "absolute",
-    right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 9999,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
   },
 });
