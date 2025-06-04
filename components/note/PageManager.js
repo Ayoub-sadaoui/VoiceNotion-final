@@ -65,16 +65,10 @@ const savePage = async (
 
   setIsSaving(true);
   try {
-    console.log("Saving page content:", currentPage.id);
-
     // Safely stringify the content
     let contentJsonString;
     try {
       contentJsonString = JSON.stringify(editorContent);
-      console.log(
-        "Content serialized successfully, length:",
-        contentJsonString.length
-      );
     } catch (serializeErr) {
       console.error("Error serializing content:", serializeErr);
       return false;
@@ -89,7 +83,6 @@ const savePage = async (
     };
 
     const savedPage = await savePage(updatedPage);
-    console.log("Page saved successfully:", savedPage.id);
     setCurrentPage(savedPage);
     return true;
   } catch (err) {
@@ -126,8 +119,6 @@ const deletePage = async (
   try {
     if (!pageId) return;
 
-    console.log(`Deleting page: ${pageId}, user initiated: ${isUserInitiated}`);
-
     // If this is the current page, we need to navigate away
     const isCurrentPage = pageId === currentPage?.id;
     const parentId = currentPage?.parentId;
@@ -136,16 +127,10 @@ const deletePage = async (
     const allPages = await loadAllPages();
     const pagesToDelete = collectPageAndDescendants(allPages, pageId);
 
-    console.log(
-      `Deleting page ${pageId} and ${pagesToDelete.length - 1} descendants`
-    );
-
     // Delete the page from storage
     const result = await deletePage(pageId);
 
     if (result) {
-      console.log("Page deleted successfully");
-
       // If this was triggered by block deletion in the editor (not user initiated)
       // and it's not the current page, we don't need to navigate
       if (!isUserInitiated && !isCurrentPage) {
@@ -218,8 +203,6 @@ const createNestedPage = async (currentPage, createNewPage, title, icon) => {
       icon || "📄"
     );
 
-    console.log("Successfully created nested page:", newPage.id);
-
     // Return the created page
     return newPage;
   } catch (err) {
@@ -249,7 +232,6 @@ const insertPageLink = async (editorRef, newPage, handleSave, setIsSaving) => {
           newPage.title,
           newPage.icon
         );
-        console.log("Page link inserted successfully");
 
         // Save the current page with the new link
         await handleSave();

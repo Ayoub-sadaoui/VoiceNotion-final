@@ -5,9 +5,11 @@ import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 
 // API Key for Google Cloud Speech-to-Text
-// SECURITY WARNING: For production, this should be moved to a secure backend
+// SECURITY NOTE: In production, this should be moved to a secure backend
+// and never exposed in client-side code. Consider using environment variables
+// or a backend proxy for API requests.
 const GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY =
-  "AIzaSyBUjmj5WK8mqBhLlhyx-5-J3blXa9v8ZzQ"; // REPLACE THIS!
+  "AIzaSyBUjmj5WK8mqBhLlhyx-5-J3blXa9v8ZzQ"; // REPLACE WITH YOUR API KEY
 
 const VoiceRecorder = ({
   onTranscriptionComplete,
@@ -17,7 +19,6 @@ const VoiceRecorder = ({
 }) => {
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [recordedUri, setRecordedUri] = useState(null);
 
   // Handle voice record button press
   const handleVoiceRecordPress = async () => {
@@ -27,24 +28,18 @@ const VoiceRecorder = ({
         const uri = await stopRecording();
         // Process the recording for transcription
         if (uri) {
-          console.log("Starting transcription of recorded audio...");
-          const transcription = await transcribeAudioAlternative(uri);
+          const transcription = await transcribeAudio(uri);
 
           // Check if we have valid transcription text
           if (transcription) {
-            console.log("Final transcription result:", transcription);
             onTranscriptionComplete(transcription);
-          } else {
-            console.warn("No transcription result available to insert");
           }
         }
         return;
       }
 
       // Otherwise check permissions and start recording
-      console.log("Requesting microphone permission...");
       const { status } = await Audio.requestPermissionsAsync();
-      console.log("Permission status:", status);
 
       if (status !== "granted") {
         Alert.alert(
@@ -66,8 +61,6 @@ const VoiceRecorder = ({
   // Start recording function
   const startRecording = async () => {
     try {
-      console.log("Starting recording...");
-
       // Set audio mode for recording
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
@@ -104,7 +97,6 @@ const VoiceRecorder = ({
       // Update state
       setRecording(newRecording);
       setIsRecording(true);
-      console.log("Recording started");
     } catch (error) {
       console.error("Failed to start recording:", error);
       Alert.alert("Error", "Failed to start recording. Please try again.");
@@ -113,9 +105,7 @@ const VoiceRecorder = ({
 
   // Stop recording function
   const stopRecording = async () => {
-    console.log("Stopping recording...");
     if (!recording) {
-      console.warn("No active recording to stop");
       return null;
     }
 
@@ -125,12 +115,10 @@ const VoiceRecorder = ({
 
       // Get the recorded URI
       const uri = recording.getURI();
-      console.log("Recording stopped and stored at:", uri);
 
-      // Reset recording state and save URI
+      // Reset recording state
       setRecording(null);
       setIsRecording(false);
-      setRecordedUri(uri);
 
       return uri;
     } catch (error) {
@@ -142,67 +130,24 @@ const VoiceRecorder = ({
     }
   };
 
-  // Alternative approach to transcribe audio using file URI instead of Base64
-  const transcribeAudioAlternative = async (audioUri) => {
+  // Transcribe audio using Google Cloud Speech-to-Text API
+  const transcribeAudio = async (audioUri) => {
     try {
-      console.log("Starting alternative transcription process for:", audioUri);
-
       if (!audioUri) {
-        console.error("No audio URI provided for transcription");
         return null;
       }
 
-      // For debugging - add a short delay to ensure file is fully written
+      // Small delay to ensure file is fully written
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Check if file exists and get info
       const fileInfo = await FileSystem.getInfoAsync(audioUri);
-      console.log("File info:", fileInfo);
-
       if (!fileInfo.exists) {
-        console.error("Audio file does not exist at specified URI");
-        return null;
-      }
-
-      // Get file extension from URI
-      const fileExtension = audioUri.split(".").pop().toLowerCase();
-      console.log("File extension:", fileExtension);
-
-      // First, try the main approach
-      const transcription = await transcribeAudio(audioUri);
-
-      if (transcription) {
-        return transcription;
-      } else {
-        console.log(
-          "Main transcription approach failed, please check your API key and account setup"
-        );
-        Alert.alert(
-          "Transcription Issue",
-          "There was a problem with the transcription service. Please verify your Google Cloud API key and ensure the Speech-to-Text API is enabled in your Google Cloud Console."
-        );
-        return null;
-      }
-    } catch (error) {
-      console.error("Error in alternative transcription method:", error);
-      return null;
-    }
-  };
-
-  // Transcribe audio using Google Cloud Speech-to-Text API
-  const transcribeAudio = async (audioUri) => {
-    try {
-      console.log("Starting transcription process for:", audioUri);
-
-      // Check if URI exists
-      if (!audioUri) {
-        console.error("No audio URI provided for transcription");
         return null;
       }
 
       // Get file extension from URI to determine encoding
       const fileExtension = audioUri.split(".").pop().toLowerCase();
-      console.log("File extension detected:", fileExtension);
 
       // Set encoding based on file extension
       let encoding = "AMR";
@@ -216,16 +161,10 @@ const VoiceRecorder = ({
         sampleRate = 8000;
       }
 
-      console.log(`Using encoding: ${encoding}, sample rate: ${sampleRate}`);
-
       // Read the audio file as Base64
       const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-
-      console.log(
-        `Read audio file successfully, size: ${base64Audio.length} bytes`
-      );
 
       // Prepare request body for Google Cloud Speech-to-Text API
       const requestBody = {
@@ -241,16 +180,7 @@ const VoiceRecorder = ({
         },
       };
 
-      // Log the first few characters of the base64 content to verify format
-      console.log(
-        "Base64 content preview:",
-        base64Audio.substring(0, 50) + "..."
-      );
-
       // Make API request
-      console.log(
-        `Sending request to Google Cloud Speech-to-Text API with ${encoding} encoding...`
-      );
       const response = await fetch(
         `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY}`,
         {
@@ -266,32 +196,23 @@ const VoiceRecorder = ({
       if (!response.ok) {
         const errorText = await response.text();
         console.error("API Error:", response.status, errorText);
+        Alert.alert(
+          "Transcription Issue",
+          "There was a problem with the transcription service. Please verify your Google Cloud API key and ensure the Speech-to-Text API is enabled in your Google Cloud Console."
+        );
         return null;
       }
 
       // Parse response
       const responseData = await response.json();
-      console.log(
-        "Google Cloud Speech-to-Text API Raw Response:",
-        JSON.stringify(responseData, null, 2)
-      );
 
       // Extract transcription text if available
       if (
-        responseData &&
-        responseData.results &&
-        responseData.results.length > 0 &&
-        responseData.results[0].alternatives &&
-        responseData.results[0].alternatives.length > 0
+        responseData?.results?.length > 0 &&
+        responseData.results[0]?.alternatives?.length > 0
       ) {
-        const transcription =
-          responseData.results[0].alternatives[0].transcript;
-        console.log("Transcription successful:", transcription);
-        return transcription;
+        return responseData.results[0].alternatives[0].transcript;
       } else {
-        console.warn(
-          "No transcription result returned - Try speaking more clearly or for longer"
-        );
         Alert.alert(
           "No Speech Detected",
           "No speech was detected in the recording. Please try again and speak clearly."

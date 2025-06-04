@@ -4,8 +4,7 @@ import React, {
   useRef,
   useEffect,
 } from "react";
-import { View, StyleSheet, Text, Platform } from "react-native";
-import { WebView } from "react-native-webview";
+import { View, StyleSheet, Text } from "react-native";
 import usePageStorage from "../hooks/usePageStorage";
 
 // This component is a native wrapper around our DOM Editor.web.jsx component
@@ -18,30 +17,26 @@ const Editor = forwardRef((props, ref) => {
     currentPageId,
     keyboardHeight,
     isKeyboardVisible,
+    recentTranscription,
     ...otherProps
   } = props;
 
   const editorRef = useRef(null);
-  const webViewRef = useRef(null);
 
   // Use page storage hooks for CRUD operations
   const { createNewPage, savePage, deletePage } = usePageStorage();
 
-  // Log available methods on the editor ref when it changes
+  // Effect to handle recentTranscription updates
   useEffect(() => {
-    if (editorRef.current) {
-      console.log("Editor ref methods:", Object.keys(editorRef.current));
-
-      // Check if the editor ref has the required methods
-      if (editorRef.current.insertTranscribedText) {
-        console.log("insertTranscribedText method is available");
-      } else {
-        console.warn(
-          "insertTranscribedText method is NOT available on editor ref"
-        );
-      }
+    if (recentTranscription && editorRef.current) {
+      // Focus the editor to refresh the view after new transcription
+      setTimeout(() => {
+        if (typeof editorRef.current.focusEditor === "function") {
+          editorRef.current.focusEditor();
+        }
+      }, 100);
     }
-  }, [editorRef.current]);
+  }, [recentTranscription]);
 
   // Expose methods to parent components
   useImperativeHandle(ref, () => ({
@@ -67,142 +62,41 @@ const Editor = forwardRef((props, ref) => {
       }
     },
 
-    // Add transcribed text to the editor
-    insertTranscribedText: (text, intentData = null) => {
-      console.log("Editor.jsx: insertTranscribedText called", text);
-
-      try {
-        // First, try with the standard reference method
-        if (editorRef.current) {
-          if (typeof editorRef.current.insertTranscribedText === "function") {
-            console.log("Editor.jsx: Calling internal insertTranscribedText");
-            return editorRef.current.insertTranscribedText(text, intentData);
-          } else {
-            console.log(
-              "Editor.jsx: insertTranscribedText not found on editorRef.current"
-            );
-            console.log(
-              "Editor.jsx: Available methods:",
-              Object.keys(editorRef.current)
-            );
-
-            // Try to load TranscriptionHandler directly for a more direct approach
-            try {
-              console.log(
-                "Editor.jsx: Trying to import TranscriptionHandler directly"
-              );
-              // Direct import of the handler
-              const TranscriptionHandler =
-                require("./editor-components/TranscriptionHandler").default;
-
-              // Try to get editor via getEditor method
-              if (
-                editorRef.current.getEditor &&
-                typeof editorRef.current.getEditor === "function"
-              ) {
-                console.log(
-                  "Editor.jsx: Found getEditor method, trying to access editor"
-                );
-                const editor = editorRef.current.getEditor();
-                if (editor) {
-                  console.log(
-                    "Editor.jsx: Got editor instance, attempting direct insertion"
-                  );
-                  const result = TranscriptionHandler.insertTranscribedText(
-                    editor,
-                    text
-                  );
-                  if (result) {
-                    console.log(
-                      "Editor.jsx: Successfully inserted text via direct TranscriptionHandler"
-                    );
-                    return true;
-                  }
-                }
-              }
-            } catch (importError) {
-              console.error(
-                "Editor.jsx: Error importing or using TranscriptionHandler:",
-                importError
-              );
+    // Focus the editor to ensure UI refresh
+    focusEditor: () => {
+      if (editorRef.current) {
+        if (typeof editorRef.current.focusEditor === "function") {
+          return editorRef.current.focusEditor();
+        } else if (
+          editorRef.current.getEditor &&
+          typeof editorRef.current.getEditor === "function"
+        ) {
+          try {
+            const editor = editorRef.current.getEditor();
+            if (editor && typeof editor.focus === "function") {
+              editor.focus();
+              return true;
             }
-
-            // Try to get internal editor
-            if (
-              editorRef.current.getEditor &&
-              typeof editorRef.current.getEditor === "function"
-            ) {
-              console.log(
-                "Editor.jsx: Trying to access internal editor anyway"
-              );
-              try {
-                const editor = editorRef.current.getEditor();
-
-                if (editor) {
-                  console.log(
-                    "Editor.jsx: Got internal editor, creating block directly"
-                  );
-
-                  // Create paragraph block
-                  const newBlock = {
-                    type: "paragraph",
-                    props: {
-                      textColor: "default",
-                      backgroundColor: "default",
-                      textAlignment: "left",
-                    },
-                    content: [
-                      {
-                        type: "text",
-                        text: text,
-                        styles: {},
-                      },
-                    ],
-                    children: [],
-                  };
-
-                  console.log(
-                    "Editor.jsx: Editor methods:",
-                    Object.keys(editor)
-                  );
-
-                  // Try to insert the block
-                  if (
-                    editor.topLevelBlocks &&
-                    editor.topLevelBlocks.length > 0
-                  ) {
-                    const lastBlock =
-                      editor.topLevelBlocks[editor.topLevelBlocks.length - 1];
-                    editor.insertBlocks([newBlock], lastBlock, "after");
-                    console.log(
-                      "Editor.jsx: Successfully inserted using direct block insertion"
-                    );
-                    return true;
-                  } else {
-                    editor.insertBlocks([newBlock], null, "firstChild");
-                    console.log(
-                      "Editor.jsx: Successfully inserted at root using direct block insertion"
-                    );
-                    return true;
-                  }
-                }
-              } catch (error) {
-                console.error(
-                  "Editor.jsx: Error trying alternative insertion:",
-                  error
-                );
-              }
-            }
+          } catch (err) {
+            console.error("Error focusing editor:", err);
           }
         }
+      }
+      return false;
+    },
 
-        console.error("Editor.jsx: All insertion methods failed");
+    // This method is provided for API compatibility but transcription is now handled
+    // primarily through AsyncStorage in the parent component
+    insertTranscribedText: (text) => {
+      // Try our best to insert text if called directly, but most transcription
+      // handling is now done via state updates in the parent component
+      try {
+        if (editorRef.current && editorRef.current.insertTranscribedText) {
+          return editorRef.current.insertTranscribedText(text);
+        }
         return false;
       } catch (error) {
-        console.error(
-          "Editor.jsx: Uncaught error in insertTranscribedText:",
-          error
-        );
+        console.error("Error inserting transcribed text:", error);
         return false;
       }
     },
@@ -238,11 +132,8 @@ const Editor = forwardRef((props, ref) => {
         return Promise.reject(new Error("No current page ID provided"));
       }
 
-      console.log("Creating nested page with parent:", currentPageId);
-
       // Create new page with current page as parent
       const newPage = await createNewPage(currentPageId, pageTitle, pageIcon);
-      console.log("Created new nested page:", newPage.id);
       return newPage;
     } catch (err) {
       console.error("Error creating nested page:", err);
@@ -275,12 +166,12 @@ const Editor = forwardRef((props, ref) => {
   };
 
   try {
-    // Import the web version of the editor for both web and mobile platforms
+    // Import the web version of the editor
     // since we're using Expo's DOM component feature
-    const EditorComponent = require("./Editor.web").default;
+    const BlockNoteEditorWeb = require("./Editor.web").default;
 
     return (
-      <EditorComponent
+      <BlockNoteEditorWeb
         ref={editorRef}
         initialContent={initialContent}
         theme={theme}

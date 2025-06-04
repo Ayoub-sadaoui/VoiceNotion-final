@@ -1,6 +1,11 @@
 "use dom";
 
-import React, { forwardRef, useRef, useImperativeHandle } from "react";
+import React, {
+  forwardRef,
+  useRef,
+  useImperativeHandle,
+  useEffect,
+} from "react";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import "./editor.css";
@@ -12,9 +17,22 @@ import { BlockNoteEditor } from "./editor-components";
 import TranscriptionHandler from "./editor-components/TranscriptionHandler";
 
 // Main editor component
-const HelloWorld = forwardRef((props, ref) => {
+const BlockNoteEditorWeb = forwardRef((props, ref) => {
   // Create a ref to the BlockNoteEditor component
   const editorRef = useRef(null);
+  const { recentTranscription } = props;
+
+  // Effect to handle new transcriptions
+  useEffect(() => {
+    if (recentTranscription && editorRef.current) {
+      // Focus editor to ensure UI updates with new content
+      setTimeout(() => {
+        if (typeof editorRef.current.focusEditor === "function") {
+          editorRef.current.focusEditor();
+        }
+      }, 100);
+    }
+  }, [recentTranscription]);
 
   // Expose methods to the parent component via useImperativeHandle
   useImperativeHandle(ref, () => ({
@@ -49,27 +67,44 @@ const HelloWorld = forwardRef((props, ref) => {
       }
     },
 
-    // CRITICAL: Explicitly forward the insertTranscribedText method
-    insertTranscribedText: (text) => {
-      console.log(
-        "Editor.web: Forwarding insertTranscribedText call with:",
-        text
-      );
+    // Forward focusEditor method for UI refresh
+    focusEditor: () => {
+      if (editorRef.current) {
+        // Try using the component's focusEditor method if available
+        if (typeof editorRef.current.focusEditor === "function") {
+          return editorRef.current.focusEditor();
+        }
 
+        // Try to get editor instance directly
+        if (typeof editorRef.current.getEditor === "function") {
+          try {
+            const editor = editorRef.current.getEditor();
+            if (editor && typeof editor.focus === "function") {
+              editor.focus();
+              return true;
+            }
+          } catch (error) {
+            console.error("Error focusing editor:", error);
+          }
+        }
+      }
+
+      return false;
+    },
+
+    // Forward the insertTranscribedText method
+    insertTranscribedText: (text) => {
       // Try to use the BlockNoteEditor's method first
       if (editorRef.current && editorRef.current.insertTranscribedText) {
-        console.log("Calling BlockNoteEditor.insertTranscribedText");
         return editorRef.current.insertTranscribedText(text);
       }
 
       // If that fails, try using the getEditor method to access the editor directly
       if (editorRef.current && editorRef.current.getEditor) {
         try {
-          console.log("Using getEditor to access editor directly");
           const editor = editorRef.current.getEditor();
 
           if (editor) {
-            console.log("Got editor instance, inserting text directly");
             // Use the imported TranscriptionHandler
             return TranscriptionHandler.insertTranscribedText(editor, text);
           }
@@ -78,7 +113,6 @@ const HelloWorld = forwardRef((props, ref) => {
         }
       }
 
-      console.warn("Editor.web: Failed to insert text with all methods");
       return false;
     },
 
@@ -110,4 +144,4 @@ const HelloWorld = forwardRef((props, ref) => {
   return <BlockNoteEditor {...props} ref={editorRef} />;
 });
 
-export default HelloWorld;
+export default BlockNoteEditorWeb;

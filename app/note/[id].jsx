@@ -76,6 +76,8 @@ export default function NoteScreen() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [nestedPages, setNestedPages] = useState([]);
+  const [forceRefresh, setForceRefresh] = useState(0);
+  const [recentTranscription, setRecentTranscription] = useState(null);
 
   // Listen for keyboard events
   useEffect(() => {
@@ -84,7 +86,6 @@ export default function NoteScreen() {
       (e) => {
         // Get keyboard height from event
         const keyboardHeight = e.endCoordinates.height;
-        console.log("Keyboard height:", keyboardHeight);
         setKeyboardHeight(keyboardHeight);
         setIsKeyboardVisible(true);
       }
@@ -119,7 +120,6 @@ export default function NoteScreen() {
         setIsSaving(false); // Reset saving state
 
         const page = await getPageById(id);
-        console.log("Page data retrieved:", page ? "Found" : "Not found");
 
         if (!isMounted) return; // Don't update state if unmounted
 
@@ -131,11 +131,6 @@ export default function NoteScreen() {
           try {
             // Parse the contentJson into an object for the editor
             const contentJson = page.contentJson || "{}";
-            console.log(
-              "Content JSON string:",
-              contentJson.substring(0, 50) +
-                (contentJson.length > 50 ? "..." : "")
-            );
 
             const parsedContent =
               contentJson && contentJson !== "{}"
@@ -160,10 +155,6 @@ export default function NoteScreen() {
                     },
                   ];
 
-            console.log(
-              "Content parsed successfully. Top level blocks:",
-              parsedContent.length
-            );
             setInitialContent(parsedContent);
           } catch (err) {
             console.error("Error parsing page content:", err);
@@ -207,24 +198,10 @@ export default function NoteScreen() {
 
     try {
       const childPages = await getChildrenOfPage(currentPage.id);
-      console.log(
-        `Loaded ${childPages.length} nested pages for ${currentPage.id}:`
-      );
-      // Print details of the child pages for debugging
-      childPages.forEach((page) => {
-        console.log(
-          `  - Page ID: ${page.id}, Title: ${page.title}, ParentID: ${page.parentId}`
-        );
-      });
-
       setNestedPages(childPages);
 
       // If we have the editor content, check for any page links that don't belong
       if (editorRef.current && editorContent) {
-        console.log(
-          `Validating page links - ${childPages.length} nested pages available`
-        );
-
         // Get all page links in the current content
         const pageLinkBlocks = [];
         editorContent.forEach((block) => {
@@ -237,10 +214,6 @@ export default function NoteScreen() {
           }
         });
 
-        console.log(
-          `Found ${pageLinkBlocks.length} page link blocks in editor content:`
-        );
-
         // Skip validation if there are no page links
         if (pageLinkBlocks.length === 0) {
           return;
@@ -250,27 +223,17 @@ export default function NoteScreen() {
         const invalidLinkIds = [];
 
         pageLinkBlocks.forEach((link) => {
-          console.log(
-            `  - Block ID: ${link.id}, Links to Page: ${link.pageId}, Title: ${link.pageTitle}`
-          );
           // Check if this link corresponds to a child page
           const matchingChild = childPages.find(
             (page) => page.id === link.pageId
           );
           if (!matchingChild) {
-            console.log(
-              `    WARNING: This link does not match any child page of ${currentPage.id}`
-            );
             invalidLinkIds.push(link.pageId);
           }
         });
 
         // If we found invalid links, clean them up
         if (invalidLinkIds.length > 0) {
-          console.log(
-            `Cleaning up ${invalidLinkIds.length} invalid page links`
-          );
-
           // Create a modified copy of the content with links removed
           const modifiedContent = [...editorContent];
           let contentChanged = false;
@@ -326,10 +289,6 @@ export default function NoteScreen() {
 
             try {
               const savedPage = await storageSavePage(updatedPage);
-              console.log(
-                "Page saved successfully after link cleanup:",
-                savedPage.id
-              );
               setCurrentPage(savedPage);
             } catch (saveErr) {
               console.error("Error saving page after link cleanup:", saveErr);
@@ -364,7 +323,6 @@ export default function NoteScreen() {
         return;
       }
 
-      console.log("Auto-saving changes for page:", currentPage.id);
       setIsSaving(true);
 
       try {
@@ -378,7 +336,6 @@ export default function NoteScreen() {
         };
 
         const savedPage = await storageSavePage(updatedPage);
-        console.log("Auto-save completed successfully");
         setCurrentPage(savedPage);
       } catch (err) {
         console.error("Error during auto-save:", err);
@@ -395,18 +352,6 @@ export default function NoteScreen() {
       if (!content) {
         console.warn("Received empty content from editor");
         return;
-      }
-
-      // Log content change for debugging
-      if (Array.isArray(content)) {
-        console.log(
-          `Editor content changed: ${content.length} top-level blocks`
-        );
-      } else {
-        console.log(
-          "Editor content changed but format is unexpected:",
-          typeof content
-        );
       }
 
       // Always update our local state to stay in sync with the editor
@@ -517,8 +462,6 @@ export default function NoteScreen() {
         icon || "📄"
       );
 
-      console.log("Successfully created nested page:", newPage.id);
-
       // Return the created page so Editor.web can use it
       return newPage;
     } catch (err) {
@@ -531,8 +474,6 @@ export default function NoteScreen() {
   // Create a direct insertion method that works with our current editorContent state
   const insertTranscriptionDirectly = (transcription) => {
     try {
-      console.log("Attempting direct content insertion for transcription");
-
       // Use editorContent if available, fall back to initialContent
       let currentContent = editorContent;
 
@@ -541,7 +482,6 @@ export default function NoteScreen() {
         !Array.isArray(currentContent) ||
         currentContent.length === 0
       ) {
-        console.log("No valid editorContent, using initialContent instead");
         currentContent = initialContent;
 
         // If even initialContent is not valid, create a basic content structure
@@ -550,7 +490,6 @@ export default function NoteScreen() {
           !Array.isArray(currentContent) ||
           currentContent.length === 0
         ) {
-          console.log("Creating basic content structure");
           currentContent = [
             {
               type: "paragraph",
@@ -577,47 +516,56 @@ export default function NoteScreen() {
 
       // Create a copy of current content with new block appended
       const updatedContent = [...currentContent, newBlock];
-      console.log(
-        `Adding new paragraph block, now ${updatedContent.length} blocks`
-      );
 
-      // Force a reload of the editor content by temporarily setting initialContent to null
-      // then setting it to the updated content - this triggers a complete re-render
-      setInitialContent(null);
+      // Store the recent transcription
+      setRecentTranscription(transcription);
 
-      // Use setTimeout to ensure state updates happen in separate render cycles
-      setTimeout(() => {
-        // Update the state variables with the new content
-        setEditorContent(updatedContent);
-        setInitialContent(updatedContent);
+      // Update the state variables immediately
+      setEditorContent(updatedContent);
+      setInitialContent(updatedContent);
 
-        console.log("Editor state updated with new content");
+      // Force a refresh of the editor component
+      setForceRefresh((prev) => prev + 1);
 
-        // Try to update the editor content directly if possible
-        if (editorRef.current) {
-          if (typeof editorRef.current.setContent === "function") {
-            console.log("Directly updating editor content via setContent");
-            editorRef.current.setContent(updatedContent);
-          } else if (
-            editorRef.current.getEditor &&
-            typeof editorRef.current.getEditor === "function"
-          ) {
-            try {
-              const editor = editorRef.current.getEditor();
-              if (editor && typeof editor.insertBlocks === "function") {
-                console.log("Inserting block directly via editor reference");
-                editor.insertBlocks([newBlock], null, "lastChild");
-              }
-            } catch (err) {
-              console.error("Error accessing editor:", err);
+      // Try to update the editor content directly if possible
+      if (editorRef.current) {
+        if (typeof editorRef.current.setContent === "function") {
+          editorRef.current.setContent(updatedContent);
+
+          // Try focusing the editor to ensure refresh
+          setTimeout(() => {
+            if (typeof editorRef.current.focusEditor === "function") {
+              editorRef.current.focusEditor();
             }
+          }, 50);
+        } else if (
+          editorRef.current.getEditor &&
+          typeof editorRef.current.getEditor === "function"
+        ) {
+          try {
+            const editor = editorRef.current.getEditor();
+            if (editor && typeof editor.insertBlocks === "function") {
+              editor.insertBlocks([newBlock], null, "lastChild");
+
+              // Try focusing after insertion to trigger UI update
+              setTimeout(() => {
+                try {
+                  if (typeof editor.focus === "function") {
+                    editor.focus();
+                  }
+                } catch (focusErr) {
+                  console.error("Error focusing editor:", focusErr);
+                }
+              }, 50);
+            }
+          } catch (err) {
+            console.error("Error accessing editor:", err);
           }
         }
-      }, 50);
+      }
 
       // Also directly update the page content with the changes
       if (currentPage) {
-        console.log("Directly updating page contentJson");
         const contentJsonString = JSON.stringify(updatedContent);
         const updatedPage = {
           ...currentPage,
@@ -629,8 +577,10 @@ export default function NoteScreen() {
         setIsSaving(true);
         storageSavePage(updatedPage)
           .then(() => {
-            console.log("Page saved successfully with transcription");
             setIsSaving(false);
+
+            // Refresh the UI again after save
+            setForceRefresh((prev) => prev + 1);
           })
           .catch((err) => {
             console.error("Error saving page with transcription:", err);
@@ -647,8 +597,6 @@ export default function NoteScreen() {
 
   // Handle transcription completed from VoiceRecorder
   const handleTranscriptionComplete = (transcription) => {
-    console.log("Transcription received in parent component:", transcription);
-
     // Check if transcription is valid
     if (
       !transcription ||
@@ -659,115 +607,8 @@ export default function NoteScreen() {
       return;
     }
 
-    // Try DIRECT approach first - use our state management
-    const directSuccess = insertTranscriptionDirectly(transcription);
-    if (directSuccess) {
-      console.log(
-        "Successfully inserted transcription via direct state update"
-      );
-      return;
-    }
-
-    // If direct approach fails, try the standard approaches
-    try {
-      // Ensure editor reference exists
-      if (!editorRef.current) {
-        console.warn("Editor reference is not available");
-        Alert.alert("Transcription Result", transcription, [{ text: "OK" }]);
-        return;
-      }
-
-      // DIRECT DEBUG: Try to access the editor at every level of the reference chain
-      console.log("DEBUG: Starting direct insertion attempt");
-
-      // First try the standard way
-      if (typeof editorRef.current.insertTranscribedText === "function") {
-        console.log("DEBUG: Using standard insertTranscribedText method");
-        try {
-          const success =
-            editorRef.current.insertTranscribedText(transcription);
-          if (success) {
-            console.log(
-              "DEBUG: Successfully inserted transcription via standard method"
-            );
-            return;
-          }
-        } catch (error) {
-          console.error("DEBUG: Error in standard method:", error);
-        }
-      }
-
-      // Try to access internal editor directly
-      if (typeof editorRef.current.getEditor === "function") {
-        console.log("DEBUG: Trying to get editor directly");
-        try {
-          const editor = editorRef.current.getEditor();
-          if (editor) {
-            console.log("DEBUG: Got editor directly, attempting insertion");
-
-            // Create a paragraph block
-            const newBlock = {
-              type: "paragraph",
-              props: {
-                textColor: "default",
-                backgroundColor: "default",
-                textAlignment: "left",
-              },
-              content: [
-                {
-                  type: "text",
-                  text: transcription,
-                  styles: {},
-                },
-              ],
-              children: [],
-            };
-
-            console.log(
-              "DEBUG: Editor operations available:",
-              Object.keys(editor)
-            );
-
-            // Try inserting directly
-            if (typeof editor.insertBlocks === "function") {
-              console.log("DEBUG: Using insertBlocks");
-
-              if (editor.topLevelBlocks && editor.topLevelBlocks.length > 0) {
-                const lastBlock =
-                  editor.topLevelBlocks[editor.topLevelBlocks.length - 1];
-                editor.insertBlocks([newBlock], lastBlock, "after");
-                console.log(
-                  "DEBUG: Successfully inserted using direct editor.insertBlocks"
-                );
-                return;
-              } else {
-                editor.insertBlocks([newBlock], null, "firstChild");
-                console.log(
-                  "DEBUG: Successfully inserted at root using direct editor.insertBlocks"
-                );
-                return;
-              }
-            }
-
-            // Try another approach by getting the document
-            if (editor.document) {
-              console.log(
-                "DEBUG: Document available, length:",
-                editor.document.length
-              );
-            }
-          }
-        } catch (error) {
-          console.error("DEBUG: Error accessing direct editor:", error);
-        }
-      }
-
-      console.warn("DEBUG: All direct insertion approaches failed");
-      Alert.alert("Transcription Result", transcription, [{ text: "OK" }]);
-    } catch (error) {
-      console.error("Error in transcription handler:", error);
-      Alert.alert("Transcription Result", transcription, [{ text: "OK" }]);
-    }
+    // Use the direct approach which updates state and AsyncStorage
+    insertTranscriptionDirectly(transcription);
   };
 
   if (storageLoading || isLoading) {
@@ -843,6 +684,7 @@ export default function NoteScreen() {
       >
         {initialContent ? (
           <Editor
+            key={`editor-${forceRefresh}`}
             ref={editorRef}
             title={title}
             icon={icon}
@@ -855,6 +697,7 @@ export default function NoteScreen() {
             onCreateNestedPage={handleCreateNestedPage}
             onDeletePage={handleDeletePage}
             nestedPages={nestedPages}
+            recentTranscription={recentTranscription}
           />
         ) : (
           <View style={styles.loadingContainer}>

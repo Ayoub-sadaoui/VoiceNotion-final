@@ -39,6 +39,7 @@ const BlockNoteEditor = forwardRef((props, ref) => {
     isKeyboardVisible = false,
     currentPageId,
     nestedPages = [],
+    recentTranscription = null,
   } = props;
 
   // Use a ref to track whether component is mounted
@@ -330,103 +331,184 @@ const BlockNoteEditor = forwardRef((props, ref) => {
     };
   }, []);
 
-  // Expose methods to the parent component
-  useImperativeHandle(ref, () => ({
-    // Function to get the editor content
-    getContent: () => {
-      if (editor) {
-        return editor.topLevelBlocks;
-      }
-      return null;
-    },
+  // Handle recentTranscription changes
+  useEffect(() => {
+    if (recentTranscription && editor) {
+      console.log("BlockNoteEditor: New transcription detected, updating UI");
 
-    // Function to set the editor content
-    setContent: (content) => {
-      if (editor && content) {
-        editor.replaceBlocks(
-          editor.document?.map((block) => block.id) || [],
-          content
-        );
-        return true;
-      }
-      return false;
-    },
-
-    // Function to insert a page link block
-    insertPageLink: (pageId, pageTitle, pageIcon) => {
-      return TranscriptionHandler.insertPageLinkBlock(
-        editor,
-        pageId,
-        pageTitle,
-        pageIcon
-      );
-    },
-
-    // Function to delete the current page
-    deleteCurrentPage: () => {
-      if (onDeletePage && currentPageId) {
-        setPageToDelete(currentPageId);
-        setShowDeleteConfirm(true);
-      }
-    },
-
-    // Function to insert transcribed text
-    insertTranscribedText: (text) => {
-      console.log("insertTranscribedText called with:", text);
-      return TranscriptionHandler.insertTranscribedText(editor, text);
-    },
-
-    // Provide direct access to the editor
-    getEditor: () => {
-      return editor;
-    },
-
-    // Remove page links by ID
-    removePageLinks: (pageIds) => {
-      if (!editor || !Array.isArray(pageIds)) return false;
-
+      // Ensure the editor is focused and visible
       try {
-        const blocksToRemove = [];
-        editor.topLevelBlocks.forEach((block) => {
-          if (
-            block.type === "pageLink" &&
-            pageIds.includes(block.props.pageId)
-          ) {
-            blocksToRemove.push(block);
+        // First focus the editor
+        editor.focus();
+
+        // Then scroll to the bottom after a short delay to ensure DOM is updated
+        setTimeout(() => {
+          try {
+            const editorElement = document.querySelector(".blocknote-editor");
+            if (editorElement) {
+              // Scroll to bottom with animation
+              editorElement.scrollTo({
+                top: editorElement.scrollHeight,
+                behavior: "smooth",
+              });
+              console.log("Scrolled editor to latest content");
+
+              // Create a brief visual highlight effect for the new content
+              const paragraphs = editorElement.querySelectorAll("p");
+              if (paragraphs.length > 0) {
+                const lastParagraph = paragraphs[paragraphs.length - 1];
+                // Add a temporary highlight class
+                lastParagraph.classList.add("highlight-new-content");
+                // Remove it after animation completes
+                setTimeout(() => {
+                  lastParagraph.classList.remove("highlight-new-content");
+                }, 2000);
+              }
+            }
+          } catch (scrollError) {
+            console.error("Error scrolling editor:", scrollError);
           }
-        });
-
-        if (blocksToRemove.length > 0) {
-          editor.removeBlocks(blocksToRemove);
-          return true;
-        }
-        return false;
+        }, 200);
       } catch (error) {
-        console.error("Error removing page links:", error);
-        return false;
+        console.error("Error updating UI after transcription:", error);
       }
+    }
+  }, [recentTranscription, editor]);
+
+  // Expose methods to the parent component
+  useImperativeHandle(
+    ref,
+    () => {
+      // Create the return object with all the methods we want to expose
+      return {
+        // Function to get the editor content
+        getContent: () => {
+          if (editor) {
+            return editor.topLevelBlocks;
+          }
+          return null;
+        },
+
+        // Function to set the editor content
+        setContent: (content) => {
+          if (editor && content) {
+            editor.replaceBlocks(
+              editor.document?.map((block) => block.id) || [],
+              content
+            );
+            return true;
+          }
+          return false;
+        },
+
+        // Function to insert a page link block
+        insertPageLink: (pageId, pageTitle, pageIcon) => {
+          return TranscriptionHandler.insertPageLinkBlock(
+            editor,
+            pageId,
+            pageTitle,
+            pageIcon
+          );
+        },
+
+        // Function to delete the current page
+        deleteCurrentPage: () => {
+          if (onDeletePage && currentPageId) {
+            setPageToDelete(currentPageId);
+            setShowDeleteConfirm(true);
+          }
+        },
+
+        // Function to insert transcribed text
+        insertTranscribedText: (text) => {
+          console.log("insertTranscribedText called with:", text);
+          return TranscriptionHandler.insertTranscribedText(editor, text);
+        },
+
+        // Provide direct access to the editor
+        getEditor: () => {
+          return editor;
+        },
+
+        // Remove page links by ID
+        removePageLinks: (pageIds) => {
+          if (!editor || !Array.isArray(pageIds)) return false;
+
+          try {
+            const blocksToRemove = [];
+            editor.topLevelBlocks.forEach((block) => {
+              if (
+                block.type === "pageLink" &&
+                pageIds.includes(block.props.pageId)
+              ) {
+                blocksToRemove.push(block);
+              }
+            });
+
+            if (blocksToRemove.length > 0) {
+              editor.removeBlocks(blocksToRemove);
+              return true;
+            }
+            return false;
+          } catch (error) {
+            console.error("Error removing page links:", error);
+            return false;
+          }
+        },
+
+        // Remove a single page link
+        removePageLink: (pageId) => {
+          if (!editor || !pageId) return false;
+
+          try {
+            const blocksToRemove = editor.topLevelBlocks.filter(
+              (block) =>
+                block.type === "pageLink" && block.props.pageId === pageId
+            );
+
+            if (blocksToRemove.length > 0) {
+              editor.removeBlocks(blocksToRemove);
+              return true;
+            }
+            return false;
+          } catch (error) {
+            console.error("Error removing page link:", error);
+            return false;
+          }
+        },
+
+        // Add a focusEditor method to focus the editor and ensure content updates
+        focusEditor: () => {
+          console.log("BlockNoteEditor: Attempting to focus editor");
+          if (editor) {
+            try {
+              // Focus the editor
+              editor.focus();
+
+              // Scroll to bottom for newly added content
+              try {
+                const editorElement =
+                  document.querySelector(".blocknote-editor");
+                if (editorElement) {
+                  editorElement.scrollTop = editorElement.scrollHeight;
+                  console.log("Scrolled editor to bottom");
+                }
+              } catch (scrollError) {
+                console.error("Error scrolling editor:", scrollError);
+              }
+
+              return true;
+            } catch (error) {
+              console.error("Error focusing editor:", error);
+              return false;
+            }
+          }
+          return false;
+        },
+      };
     },
-
-    // Remove a single page link
-    removePageLink: (pageId) => {
-      if (!editor || !pageId) return false;
-
-      try {
-        const blocksToRemove = editor.topLevelBlocks.filter(
-          (block) => block.type === "pageLink" && block.props.pageId === pageId
-        );
-
-        if (blocksToRemove.length > 0) {
-          editor.removeBlocks(blocksToRemove);
-          return true;
-        }
-        return false;
-      } catch (error) {
-        console.error("Error removing page link:", error);
-        return false;
-      }
-    },
-  }));
+    [editor, nestedPages, onDeletePage, onCreateNestedPage, onNavigateToPage]
+  );
 
   // Renders the editor instance using a React component
   return (

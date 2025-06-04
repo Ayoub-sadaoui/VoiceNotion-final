@@ -35,6 +35,7 @@
     "lodash.debounce": "^4.0.8",
     "react": "^19.0.0",
     "react-dom": "19.0.0",
+    "react-error-boundary": "^6.0.0",
     "react-native": "0.79.2",
     "react-native-dotenv": "^3.4.11",
     "react-native-gesture-handler": "^2.25.0",
@@ -44,7 +45,7 @@
     "react-native-toast-message": "^2.3.0",
     "react-native-vector-icons": "^10.2.0",
     "react-native-web": "^0.20.0",
-    "react-native-webview": "^13.13.5",
+    "react-native-webview": "^13.14.1",
     "uuid": "^11.1.0",
     "zustand": "^5.0.5"
   },
