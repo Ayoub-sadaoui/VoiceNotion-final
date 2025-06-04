@@ -106,6 +106,9 @@ const PageHeader = ({
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
+          accessible={true}
+          accessibilityRole="button"
+          accessibilityLabel="Close icon picker"
           onPress={() => setShowIconPicker(false)}
         >
           <View

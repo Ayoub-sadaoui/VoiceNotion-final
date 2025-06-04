@@ -99,7 +99,7 @@ const savePage = async (
  * @param {string} pageId - The ID of the page to delete
  * @param {Object} currentPage - The current page object
  * @param {Function} loadAllPages - Function to load all pages
- * @param {Function} deletePage - The storage service delete function
+ * @param {Function} deletePageFromStore - The storage service delete function
  * @param {Function} router - The router object for navigation
  * @param {Object} editorRef - Reference to the editor component
  * @param {Function} loadNestedPages - Function to reload nested pages
@@ -110,7 +110,7 @@ const deletePage = async (
   pageId,
   currentPage,
   loadAllPages,
-  deletePage,
+  deletePageFromStore,
   router,
   editorRef,
   loadNestedPages,
@@ -128,7 +128,7 @@ const deletePage = async (
     const pagesToDelete = collectPageAndDescendants(allPages, pageId);
 
     // Delete the page from storage
-    const result = await deletePage(pageId);
+    const result = await deletePageFromStore(pageId);
 
     if (result) {
       // If this was triggered by block deletion in the editor (not user initiated)

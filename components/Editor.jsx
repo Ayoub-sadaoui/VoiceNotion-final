@@ -85,20 +85,14 @@ const Editor = forwardRef((props, ref) => {
       return false;
     },
 
-    // This method is provided for API compatibility but transcription is now handled
-    // primarily through AsyncStorage in the parent component
+    // DEPRECATED: This method is kept for API compatibility only
+    // Use the direct AsyncStorage approach in note/[id].jsx instead
+    // via insertTranscriptionDirectly() function
     insertTranscribedText: (text) => {
-      // Try our best to insert text if called directly, but most transcription
-      // handling is now done via state updates in the parent component
-      try {
-        if (editorRef.current && editorRef.current.insertTranscribedText) {
-          return editorRef.current.insertTranscribedText(text);
-        }
-        return false;
-      } catch (error) {
-        console.error("Error inserting transcribed text:", error);
-        return false;
-      }
+      console.warn(
+        "Editor.insertTranscribedText is deprecated. Use direct AsyncStorage approach instead via insertTranscriptionDirectly."
+      );
+      return false;
     },
 
     // Direct access to the editor instance

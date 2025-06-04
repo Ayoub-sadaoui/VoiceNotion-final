@@ -22,7 +22,7 @@ const PageLinkBlock = createReactBlockSpec(
       const handleClick = () => {
         // Get the onNavigateToPage from the block's meta
         const onNavigateToPage =
-          editor._tiptapEditor.storage.pageLink?.onNavigateToPage;
+          editor._tiptapEditor?.storage?.pageLink?.onNavigateToPage;
 
         // Call the navigation callback
         if (onNavigateToPage && block.props.pageId) {

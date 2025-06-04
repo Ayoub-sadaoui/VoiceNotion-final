@@ -3,13 +3,15 @@ import { TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
+import { processTranscriptionWithGemini } from "../../services/geminiService";
 
 // API Key for Google Cloud Speech-to-Text
 // SECURITY NOTE: In production, this should be moved to a secure backend
 // and never exposed in client-side code. Consider using environment variables
 // or a backend proxy for API requests.
 const GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY =
-  "AIzaSyBUjmj5WK8mqBhLlhyx-5-J3blXa9v8ZzQ"; // REPLACE WITH YOUR API KEY
+  process.env.EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY;
+console.log("Speech API Key available:", !!GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY);
 
 const VoiceRecorder = ({
   onTranscriptionComplete,
@@ -19,6 +21,7 @@ const VoiceRecorder = ({
 }) => {
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Handle voice record button press
   const handleVoiceRecordPress = async () => {
@@ -28,12 +31,34 @@ const VoiceRecorder = ({
         const uri = await stopRecording();
         // Process the recording for transcription
         if (uri) {
-          const transcription = await transcribeAudio(uri);
+          setIsProcessing(true);
+          const rawTranscription = await transcribeAudio(uri);
 
           // Check if we have valid transcription text
-          if (transcription) {
-            onTranscriptionComplete(transcription);
+          if (rawTranscription) {
+            // Process the raw transcription with Gemini to get structured blocks
+            console.log("Raw transcription:", rawTranscription);
+
+            try {
+              // Process with Gemini to get structured blocks
+              const geminiResult = await processTranscriptionWithGemini(
+                rawTranscription
+              );
+              console.log("Gemini processing result:", geminiResult);
+
+              // Send the structured result to parent component
+              onTranscriptionComplete(geminiResult);
+            } catch (geminiError) {
+              console.error("Error processing with Gemini:", geminiError);
+              // Fallback to raw text if Gemini processing fails
+              onTranscriptionComplete({
+                success: false,
+                error: "Failed to process with Gemini",
+                rawText: rawTranscription,
+              });
+            }
           }
+          setIsProcessing(false);
         }
         return;
       }
@@ -55,6 +80,7 @@ const VoiceRecorder = ({
     } catch (error) {
       console.error("Error in voice recording process:", error);
       Alert.alert("Error", "Failed to handle voice recording.");
+      setIsProcessing(false);
     }
   };
 
@@ -174,6 +200,9 @@ const VoiceRecorder = ({
           languageCode: "en-US",
           audioChannelCount: 1,
           enableAutomaticPunctuation: true,
+          model: "default", // Use default model for better accuracy
+          useEnhanced: true, // Enable enhanced models
+          maxAlternatives: 1, // We only need the best alternative
         },
         audio: {
           content: base64Audio,
@@ -181,41 +210,66 @@ const VoiceRecorder = ({
       };
 
       // Make API request
-      const response = await fetch(
-        `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY}`,
-        {
+      console.log(
+        "Making Speech-to-Text API request with key available:",
+        !!GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY
+      );
+      const apiUrl = `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY}`;
+      console.log("Using API URL:", apiUrl);
+
+      try {
+        const response = await fetch(apiUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(requestBody),
+        });
+
+        // Check response status
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("API Error:", response.status, errorText);
+          Alert.alert(
+            "Transcription Issue",
+            "There was a problem with the transcription service. Please verify your Google Cloud API key and ensure the Speech-to-Text API is enabled in your Google Cloud Console."
+          );
+          return null;
         }
-      );
 
-      // Check response status
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("API Error:", response.status, errorText);
-        Alert.alert(
-          "Transcription Issue",
-          "There was a problem with the transcription service. Please verify your Google Cloud API key and ensure the Speech-to-Text API is enabled in your Google Cloud Console."
-        );
-        return null;
-      }
+        // Parse response
+        const responseData = await response.json();
 
-      // Parse response
-      const responseData = await response.json();
+        // Extract transcription text from all available results
+        if (responseData?.results?.length > 0) {
+          // Combine all results instead of just taking the first one
+          let fullTranscript = "";
 
-      // Extract transcription text if available
-      if (
-        responseData?.results?.length > 0 &&
-        responseData.results[0]?.alternatives?.length > 0
-      ) {
-        return responseData.results[0].alternatives[0].transcript;
-      } else {
+          responseData.results.forEach((result) => {
+            if (result.alternatives && result.alternatives.length > 0) {
+              // Add each transcript with a space
+              fullTranscript += result.alternatives[0].transcript + " ";
+            }
+          });
+
+          // Trim the final result to remove extra spaces
+          fullTranscript = fullTranscript.trim();
+
+          if (fullTranscript) {
+            return fullTranscript;
+          }
+        }
+
         Alert.alert(
           "No Speech Detected",
           "No speech was detected in the recording. Please try again and speak clearly."
+        );
+        return null;
+      } catch (error) {
+        console.error("Error during transcription:", error);
+        Alert.alert(
+          "Transcription Error",
+          "Failed to transcribe audio: " + error.message
         );
         return null;
       }
@@ -229,18 +283,26 @@ const VoiceRecorder = ({
     }
   };
 
+  // Determine the proper icon based on component state
+  const buttonIcon = isRecording ? "stop" : isProcessing ? "hourglass" : "mic";
+
   return (
     <TouchableOpacity
       style={[
         styles.voiceButton,
         {
-          backgroundColor: isRecording ? "#FF3B30" : theme.primary,
+          backgroundColor: isRecording
+            ? "#FF3B30"
+            : isProcessing
+            ? "#FFA500"
+            : theme.primary,
           bottom: isKeyboardVisible ? keyboardHeight + 50 : 60,
         },
       ]}
       onPress={handleVoiceRecordPress}
+      disabled={isProcessing}
     >
-      <Ionicons name={isRecording ? "stop" : "mic"} size={28} color="white" />
+      <Ionicons name={buttonIcon} size={28} color="white" />
     </TouchableOpacity>
   );
 };
@@ -251,13 +313,16 @@ const styles = StyleSheet.create({
     right: 20,
     width: 60,
     height: 60,
-    borderRadius: 9999,
+    borderRadius: 30,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
     elevation: 5,
   },
 });

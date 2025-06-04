@@ -471,8 +471,9 @@ export default function NoteScreen() {
     }
   };
 
-  // Create a direct insertion method that works with our current editorContent state
-  const insertTranscriptionDirectly = (transcription) => {
+  // PREFERRED APPROACH: This is the standardized way to add content to the editor
+  // It updates local state and persists directly to AsyncStorage without relying on BlockNote API methods
+  const insertTranscriptionDirectly = (transcriptionData, isRawText = true) => {
     try {
       // Use editorContent if available, fall back to initialContent
       let currentContent = editorContent;
@@ -511,14 +512,27 @@ export default function NoteScreen() {
         }
       }
 
-      // Create a new paragraph block
-      const newBlock = createParagraphBlock(transcription);
+      // Handle different input types
+      let newBlocks = [];
 
-      // Create a copy of current content with new block appended
-      const updatedContent = [...currentContent, newBlock];
+      if (isRawText) {
+        // Legacy mode: create a single paragraph block with the raw text
+        newBlocks = [createParagraphBlock(transcriptionData)];
+      } else {
+        // New mode: use the structured blocks directly
+        newBlocks = transcriptionData;
+      }
 
-      // Store the recent transcription
-      setRecentTranscription(transcription);
+      // Create a copy of current content with new blocks appended
+      const updatedContent = [...currentContent, ...newBlocks];
+
+      // Store the recent transcription (for UI feedback)
+      if (isRawText) {
+        setRecentTranscription(transcriptionData);
+      } else {
+        // For structured blocks, just set something so the UI updates
+        setRecentTranscription("New content added");
+      }
 
       // Update the state variables immediately
       setEditorContent(updatedContent);
@@ -538,29 +552,6 @@ export default function NoteScreen() {
               editorRef.current.focusEditor();
             }
           }, 50);
-        } else if (
-          editorRef.current.getEditor &&
-          typeof editorRef.current.getEditor === "function"
-        ) {
-          try {
-            const editor = editorRef.current.getEditor();
-            if (editor && typeof editor.insertBlocks === "function") {
-              editor.insertBlocks([newBlock], null, "lastChild");
-
-              // Try focusing after insertion to trigger UI update
-              setTimeout(() => {
-                try {
-                  if (typeof editor.focus === "function") {
-                    editor.focus();
-                  }
-                } catch (focusErr) {
-                  console.error("Error focusing editor:", focusErr);
-                }
-              }, 50);
-            }
-          } catch (err) {
-            console.error("Error accessing editor:", err);
-          }
         }
       }
 
@@ -596,19 +587,139 @@ export default function NoteScreen() {
   };
 
   // Handle transcription completed from VoiceRecorder
-  const handleTranscriptionComplete = (transcription) => {
-    // Check if transcription is valid
-    if (
-      !transcription ||
-      typeof transcription !== "string" ||
-      transcription.trim() === ""
-    ) {
-      console.warn("Invalid transcription received");
+  // This uses the preferred approach for adding content: direct AsyncStorage update
+  // Rather than using BlockNote API methods directly, we update local state and persist to AsyncStorage
+  const handleTranscriptionComplete = async (transcriptionResult) => {
+    // Check if we received a valid result
+    if (!transcriptionResult) {
+      console.warn("Invalid transcription result received");
       return;
     }
 
-    // Use the direct approach which updates state and AsyncStorage
-    insertTranscriptionDirectly(transcription);
+    console.log(
+      "Received transcription result:",
+      JSON.stringify(transcriptionResult, null, 2)
+    );
+
+    // If we have successfully parsed blocks from Gemini
+    if (transcriptionResult.success) {
+      // Check specifically for createNewPage flag
+      console.log(
+        "Transcription success, createNewPage flag:",
+        !!transcriptionResult.createNewPage
+      );
+
+      if (transcriptionResult.createNewPage) {
+        // Handle new page creation scenario
+        console.log(
+          "New page request detected:",
+          transcriptionResult.pageTitle
+        );
+
+        try {
+          // Save current page before creating a new one
+          await handleSave();
+
+          // 1. Create the new page
+          const newPage = await createNewPage(
+            currentPage.id, // Use current page as parent
+            transcriptionResult.pageTitle || "New Page",
+            transcriptionResult.pageIcon || "📄"
+          );
+
+          if (!newPage || !newPage.id) {
+            console.error("Failed to create new page");
+            // Fallback - just add the transcription as text
+            insertTranscriptionDirectly(transcriptionResult.rawText, true);
+            return;
+          }
+
+          console.log("Created new page:", newPage.id, newPage.title);
+
+          // 2. First, create a page link in the current page
+          const pageLinkBlock = {
+            type: "pageLink",
+            props: {
+              pageId: newPage.id,
+              pageTitle: newPage.title,
+              pageIcon: newPage.icon,
+            },
+          };
+
+          // 3. Insert the page link into the current page
+          const inserted = insertTranscriptionDirectly([pageLinkBlock], false);
+
+          if (!inserted) {
+            console.error("Failed to insert page link");
+            return;
+          }
+
+          // 4. Remove the page link from the blocks that will go into the new page
+          const contentBlocks = transcriptionResult.blocks.slice(1);
+
+          // 5. Save the content blocks to the new page
+          const contentJson = JSON.stringify(contentBlocks);
+          const updatedPage = {
+            ...newPage,
+            contentJson,
+            updatedAt: Date.now(),
+          };
+
+          const savedPage = await storageSavePage(updatedPage);
+          console.log("Saved content to new page:", savedPage.id);
+
+          // 6. Force a reload of nested pages to show the new page
+          await loadNestedPages();
+
+          // 7. Show success message
+          Alert.alert(
+            "Page Created",
+            `New page "${newPage.title}" created successfully. Would you like to navigate to it?`,
+            [
+              {
+                text: "Stay Here",
+                style: "cancel",
+              },
+              {
+                text: "Go to Page",
+                onPress: () => {
+                  // Navigate to the new page
+                  router.push(`/note/${newPage.id}`);
+                },
+              },
+            ]
+          );
+        } catch (error) {
+          console.error("Error handling new page creation:", error);
+          // Fallback to adding raw text
+          insertTranscriptionDirectly(transcriptionResult.rawText, true);
+
+          // Show error to user
+          Alert.alert(
+            "Error",
+            "Failed to create new page. The content has been added as text instead."
+          );
+        }
+      } else if (transcriptionResult.blocks) {
+        // Regular blocks processing
+        console.log(
+          "Using structured blocks:",
+          transcriptionResult.blocks.length
+        );
+        insertTranscriptionDirectly(transcriptionResult.blocks, false);
+      }
+    } else {
+      // If unsuccessful or no blocks, use the raw text
+      console.log("Using raw text fallback:", transcriptionResult.rawText);
+      if (transcriptionResult.rawText) {
+        insertTranscriptionDirectly(transcriptionResult.rawText, true);
+      } else if (typeof transcriptionResult === "string") {
+        // Handle case where we directly receive a string (backward compatibility)
+        insertTranscriptionDirectly(transcriptionResult, true);
+      } else {
+        console.warn("No usable transcription content found");
+      }
+    }
   };
 
   if (storageLoading || isLoading) {

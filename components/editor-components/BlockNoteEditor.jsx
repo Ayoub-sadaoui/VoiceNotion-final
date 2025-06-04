@@ -45,12 +45,57 @@ const BlockNoteEditor = forwardRef((props, ref) => {
   // Use a ref to track whether component is mounted
   const isMountedRef = useRef(false);
   const editorInstance = useRef(null);
+  const editorContainerRef = useRef(null);
   const [contentInitialized, setContentInitialized] = useState(false);
 
   // State for dialog to create a new page
   const [showCreatePageDialog, setShowCreatePageDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pageToDelete, setPageToDelete] = useState(null);
+
+  /**
+   * Helper function to safely access the editor's internal storage
+   *
+   * @param {Object} editor - The BlockNote editor instance
+   * @param {string} storageKey - The key to access in the editor's storage
+   * @param {any} value - Optional value to set in the storage
+   * @returns {any} The storage value if only getting, or true if setting was successful
+   *
+   * NOTE: This is using a private API (_tiptapEditor) which may change in future versions.
+   * This wrapper isolates the implementation detail and should be updated if BlockNote
+   * provides a public API for custom storage in the future.
+   */
+  const accessEditorStorage = (editor, storageKey, value = undefined) => {
+    if (!editor || !storageKey) return null;
+
+    try {
+      // Check if the private API exists
+      if (!editor._tiptapEditor || !editor._tiptapEditor.storage) {
+        console.warn("Editor internal storage API not available");
+        return null;
+      }
+
+      // Create storage namespace if it doesn't exist
+      if (!editor._tiptapEditor.storage[storageKey]) {
+        editor._tiptapEditor.storage[storageKey] = {};
+      }
+
+      // Set value if provided
+      if (value !== undefined) {
+        editor._tiptapEditor.storage[storageKey] = value;
+        return true;
+      }
+
+      // Return the storage object
+      return editor._tiptapEditor.storage[storageKey];
+    } catch (error) {
+      console.error(
+        `Error accessing editor storage for key: ${storageKey}`,
+        error
+      );
+      return null;
+    }
+  };
 
   // Creates a new editor instance with custom settings
   const editor = useCreateBlockNote({
@@ -149,12 +194,10 @@ const BlockNoteEditor = forwardRef((props, ref) => {
   // Store the navigation callback in the editor's storage
   useEffect(() => {
     if (editor && onNavigateToPage) {
-      // Initialize the storage for our custom block if needed
-      if (!editor._tiptapEditor.storage.pageLink) {
-        editor._tiptapEditor.storage.pageLink = {};
-      }
-      // Store the callback in the editor's storage
-      editor._tiptapEditor.storage.pageLink.onNavigateToPage = onNavigateToPage;
+      // Use the wrapper function to safely access editor storage
+      const pageLinkStorage = accessEditorStorage(editor, "pageLink") || {};
+      pageLinkStorage.onNavigateToPage = onNavigateToPage;
+      accessEditorStorage(editor, "pageLink", pageLinkStorage);
     }
   }, [editor, onNavigateToPage]);
 
@@ -333,7 +376,7 @@ const BlockNoteEditor = forwardRef((props, ref) => {
 
   // Handle recentTranscription changes
   useEffect(() => {
-    if (recentTranscription && editor) {
+    if (recentTranscription && editor && editorContainerRef.current) {
       console.log("BlockNoteEditor: New transcription detected, updating UI");
 
       // Ensure the editor is focused and visible
@@ -344,7 +387,9 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         // Then scroll to the bottom after a short delay to ensure DOM is updated
         setTimeout(() => {
           try {
-            const editorElement = document.querySelector(".blocknote-editor");
+            // Access the editor element through our ref
+            const editorElement =
+              editorContainerRef.current.querySelector(".blocknote-editor");
             if (editorElement) {
               // Scroll to bottom with animation
               editorElement.scrollTo({
@@ -353,16 +398,22 @@ const BlockNoteEditor = forwardRef((props, ref) => {
               });
               console.log("Scrolled editor to latest content");
 
-              // Create a brief visual highlight effect for the new content
-              const paragraphs = editorElement.querySelectorAll("p");
-              if (paragraphs.length > 0) {
-                const lastParagraph = paragraphs[paragraphs.length - 1];
-                // Add a temporary highlight class
-                lastParagraph.classList.add("highlight-new-content");
-                // Remove it after animation completes
-                setTimeout(() => {
-                  lastParagraph.classList.remove("highlight-new-content");
-                }, 2000);
+              // Find the last paragraph for highlighting
+              const lastBlock =
+                editor.topLevelBlocks[editor.topLevelBlocks.length - 1];
+              if (lastBlock && lastBlock.id) {
+                // Try to find the DOM element by blockId which is more reliable
+                const blockElement = editorContainerRef.current.querySelector(
+                  `[data-id="${lastBlock.id}"]`
+                );
+                if (blockElement) {
+                  // Add a temporary highlight class
+                  blockElement.classList.add("highlight-new-content");
+                  // Remove it after animation completes
+                  setTimeout(() => {
+                    blockElement.classList.remove("highlight-new-content");
+                  }, 2000);
+                }
               }
             }
           } catch (scrollError) {
@@ -419,10 +470,13 @@ const BlockNoteEditor = forwardRef((props, ref) => {
           }
         },
 
-        // Function to insert transcribed text
+        // Function to insert transcribed text - DEPRECATED
+        // Use direct AsyncStorage approach in note/[id].jsx via insertTranscriptionDirectly() instead
         insertTranscribedText: (text) => {
-          console.log("insertTranscribedText called with:", text);
-          return TranscriptionHandler.insertTranscribedText(editor, text);
+          console.warn(
+            "BlockNoteEditor.insertTranscribedText is deprecated. Use direct AsyncStorage approach instead via insertTranscriptionDirectly."
+          );
+          return false;
         },
 
         // Provide direct access to the editor
@@ -488,7 +542,9 @@ const BlockNoteEditor = forwardRef((props, ref) => {
               // Scroll to bottom for newly added content
               try {
                 const editorElement =
-                  document.querySelector(".blocknote-editor");
+                  editorContainerRef.current?.querySelector(
+                    ".blocknote-editor"
+                  );
                 if (editorElement) {
                   editorElement.scrollTop = editorElement.scrollHeight;
                   console.log("Scrolled editor to bottom");
@@ -513,6 +569,7 @@ const BlockNoteEditor = forwardRef((props, ref) => {
   // Renders the editor instance using a React component
   return (
     <div
+      ref={editorContainerRef}
       style={{
         height: "100%",
         width: "100%",
@@ -538,7 +595,7 @@ const BlockNoteEditor = forwardRef((props, ref) => {
           }
         }}
         formattingToolbar={false}
-        domAttributes={{
+        htmlAttributes={{
           editor: {
             class: "blocknote-editor custom-editor",
             style:
