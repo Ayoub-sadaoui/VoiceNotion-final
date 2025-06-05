@@ -426,6 +426,99 @@ const BlockNoteEditor = forwardRef((props, ref) => {
     }
   }, [recentTranscription, editor]);
 
+  // Handle incoming command messages for voice commands
+  const handleVoiceCommand = useCallback(
+    (command) => {
+      try {
+        if (!command || !command.type) {
+          console.error("Invalid command received:", command);
+          return { success: false, error: "Invalid command" };
+        }
+
+        console.log("BlockNoteEditor: Handling voice command:", command.type);
+
+        switch (command.type) {
+          case "FORMATTING":
+            // Apply formatting to selected text
+            if (
+              command.formatType &&
+              TranscriptionHandler.FORMAT_TYPES[
+                command.formatType.toUpperCase()
+              ]
+            ) {
+              return TranscriptionHandler.applyFormatting(
+                editor,
+                TranscriptionHandler.FORMAT_TYPES[
+                  command.formatType.toUpperCase()
+                ]
+              );
+            }
+            return false;
+
+          case "SELECTION":
+            // Handle text selection
+            if (
+              command.blockId &&
+              command.startOffset !== undefined &&
+              command.endOffset !== undefined
+            ) {
+              return TranscriptionHandler.selectText(
+                editor,
+                command.blockId,
+                command.startOffset,
+                command.endOffset
+              );
+            }
+            return false;
+
+          case "REPLACE_TEXT":
+            // Handle text replacement
+            if (command.findText && command.replaceWith !== undefined) {
+              return TranscriptionHandler.replaceText(
+                editor,
+                command.findText,
+                command.replaceWith,
+                command.targetBlockIds
+              );
+            }
+            return false;
+
+          case "BLOCK_MODIFICATION":
+            // Handle block type changes
+            if (
+              command.modificationType === "CHANGE_TYPE" &&
+              command.blockId &&
+              command.newType
+            ) {
+              return TranscriptionHandler.changeBlockType(
+                editor,
+                command.blockId,
+                command.newType,
+                command.props || {}
+              );
+            }
+            return false;
+
+          case "UNDO":
+            // Handle undo operation
+            return TranscriptionHandler.undo(editor, command.steps || 1);
+
+          case "REDO":
+            // Handle redo operation
+            return TranscriptionHandler.redo(editor, command.steps || 1);
+
+          default:
+            console.warn(`Unknown command type: ${command.type}`);
+            return false;
+        }
+      } catch (error) {
+        console.error("Error handling voice command:", error);
+        return false;
+      }
+    },
+    [editor]
+  );
+
   // Expose methods to the parent component
   useImperativeHandle(
     ref,
@@ -450,6 +543,34 @@ const BlockNoteEditor = forwardRef((props, ref) => {
             return true;
           }
           return false;
+        },
+
+        // Function to get the currently selected/focused block ID
+        getCurrentBlockId: () => {
+          if (editor) {
+            try {
+              // Try to get the current selection
+              const selection = editor.getSelection();
+
+              if (selection && selection.anchor && selection.anchor.blockId) {
+                console.log(
+                  `Current selection in block: ${selection.anchor.blockId}`
+                );
+                return selection.anchor.blockId;
+              }
+
+              // If no selection, try to get the focused block
+              const focusedBlock =
+                editor._tiptapEditor?.state?.selection?.$anchor?.node;
+              if (focusedBlock && focusedBlock.attrs && focusedBlock.attrs.id) {
+                console.log(`Current focused block: ${focusedBlock.attrs.id}`);
+                return focusedBlock.attrs.id;
+              }
+            } catch (error) {
+              console.error("Error getting current block ID:", error);
+            }
+          }
+          return null;
         },
 
         // Function to insert a page link block
@@ -485,53 +606,48 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         },
 
         // Remove page links by ID
-        removePageLinks: (pageIds) => {
-          if (!editor || !Array.isArray(pageIds)) return false;
+        removePageLinksById: (pageId) => {
+          if (!editor || !pageId) {
+            return false;
+          }
 
           try {
-            const blocksToRemove = [];
-            editor.topLevelBlocks.forEach((block) => {
-              if (
-                block.type === "pageLink" &&
-                pageIds.includes(block.props.pageId)
-              ) {
-                blocksToRemove.push(block);
-              }
-            });
+            // Get all blocks from the document
+            const blocks = editor.document || [];
+            const pageLinkBlocks = [];
 
-            if (blocksToRemove.length > 0) {
-              editor.removeBlocks(blocksToRemove);
+            // Find all page link blocks for the given pageId
+            const findPageLinks = (block) => {
+              if (block.type === "pageLink" && block.props?.pageId === pageId) {
+                pageLinkBlocks.push(block.id);
+              }
+
+              if (block.children && Array.isArray(block.children)) {
+                block.children.forEach(findPageLinks);
+              }
+            };
+
+            // Search for links
+            blocks.forEach(findPageLinks);
+
+            // If we found any links, delete them
+            if (pageLinkBlocks.length > 0) {
+              console.log(
+                `Removing ${pageLinkBlocks.length} links to page ${pageId}`
+              );
+              pageLinkBlocks.forEach((blockId) => {
+                editor.removeBlocks([blockId]);
+              });
               return true;
+            } else {
+              return false;
             }
-            return false;
           } catch (error) {
             console.error("Error removing page links:", error);
             return false;
           }
         },
 
-        // Remove a single page link
-        removePageLink: (pageId) => {
-          if (!editor || !pageId) return false;
-
-          try {
-            const blocksToRemove = editor.topLevelBlocks.filter(
-              (block) =>
-                block.type === "pageLink" && block.props.pageId === pageId
-            );
-
-            if (blocksToRemove.length > 0) {
-              editor.removeBlocks(blocksToRemove);
-              return true;
-            }
-            return false;
-          } catch (error) {
-            console.error("Error removing page link:", error);
-            return false;
-          }
-        },
-
-        // Add a focusEditor method to focus the editor and ensure content updates
         focusEditor: () => {
           console.log("BlockNoteEditor: Attempting to focus editor");
           if (editor) {
@@ -561,9 +677,55 @@ const BlockNoteEditor = forwardRef((props, ref) => {
           }
           return false;
         },
+
+        // New methods for voice commands
+
+        // Execute a command for voice interaction
+        executeVoiceCommand: (command) => {
+          return handleVoiceCommand(command);
+        },
+
+        // Find text in the editor content
+        findText: (searchText) => {
+          if (!editor || !searchText) {
+            return [];
+          }
+          return TranscriptionHandler.findTextInBlocks(editor, searchText);
+        },
+
+        // Apply formatting to selected text
+        applyFormatting: (formatType) => {
+          if (!editor || !formatType) {
+            return false;
+          }
+          return TranscriptionHandler.applyFormatting(editor, formatType);
+        },
+
+        // Perform undo operation
+        undo: (steps = 1) => {
+          if (!editor) {
+            return false;
+          }
+          return TranscriptionHandler.undo(editor, steps);
+        },
+
+        // Perform redo operation
+        redo: (steps = 1) => {
+          if (!editor) {
+            return false;
+          }
+          return TranscriptionHandler.redo(editor, steps);
+        },
       };
     },
-    [editor, nestedPages, onDeletePage, onCreateNestedPage, onNavigateToPage]
+    [
+      editor,
+      nestedPages,
+      onDeletePage,
+      onCreateNestedPage,
+      onNavigateToPage,
+      handleVoiceCommand,
+    ]
   );
 
   // Renders the editor instance using a React component

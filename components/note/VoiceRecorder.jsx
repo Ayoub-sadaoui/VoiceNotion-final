@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   TouchableOpacity,
   StyleSheet,
   Alert,
   View,
   ActivityIndicator,
+  Animated,
+  Easing,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
@@ -30,6 +32,12 @@ const VoiceRecorder = ({
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [commandState, setCommandState] = useState("idle"); // idle, recording, processing, success, error
+
+  // Animation values
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
   // Reset recording when component unmounts
   useEffect(() => {
@@ -44,6 +52,112 @@ const VoiceRecorder = ({
       }
     };
   }, [recording]);
+
+  // Animation effects based on command state
+  useEffect(() => {
+    if (isRecording) {
+      setCommandState("recording");
+      // Pulse animation for recording state
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.2,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else if (isProcessing) {
+      setCommandState("processing");
+      // Pulse animation for processing state instead of rotation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.1,
+            duration: 600,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 0.9,
+            duration: 600,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      // Reset animations when idle
+      setCommandState("idle");
+      pulseAnim.setValue(1);
+      rotateAnim.setValue(0);
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 3,
+        tension: 40,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isRecording, isProcessing]);
+
+  // Success animation function
+  const animateSuccess = () => {
+    setCommandState("success");
+    Animated.sequence([
+      Animated.timing(scaleAnim, {
+        toValue: 1.3,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setTimeout(() => {
+        setCommandState("idle");
+      }, 1000);
+    });
+  };
+
+  // Error animation function
+  const animateError = () => {
+    setCommandState("error");
+    Animated.sequence([
+      Animated.timing(scaleAnim, {
+        toValue: 1.2,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.8,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1.2,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setTimeout(() => {
+        setCommandState("idle");
+      }, 1000);
+    });
+  };
 
   // Handle voice record button press
   const handleVoiceRecordPress = async () => {
@@ -248,6 +362,7 @@ const VoiceRecorder = ({
       Alert.alert("Error", "Failed to stop recording.");
       setIsRecording(false);
       setRecording(null);
+      animateError(); // Trigger error animation
       return null;
     }
   };
@@ -330,6 +445,7 @@ const VoiceRecorder = ({
             "Transcription Issue",
             "There was a problem with the transcription service. Please verify your Google Cloud API key and ensure the Speech-to-Text API is enabled in your Google Cloud Console."
           );
+          animateError(); // Trigger error animation
           return null;
         }
 
@@ -352,6 +468,7 @@ const VoiceRecorder = ({
           fullTranscript = fullTranscript.trim();
 
           if (fullTranscript) {
+            animateSuccess(); // Trigger success animation
             return fullTranscript;
           }
         }
@@ -360,6 +477,7 @@ const VoiceRecorder = ({
           "No Speech Detected",
           "No speech was detected in the recording. Please try again and speak clearly."
         );
+        animateError(); // Trigger error animation
         return null;
       } catch (error) {
         console.error("Error during transcription:", error);
@@ -367,6 +485,7 @@ const VoiceRecorder = ({
           "Transcription Error",
           "Failed to transcribe audio: " + error.message
         );
+        animateError(); // Trigger error animation
         return null;
       }
     } catch (error) {
@@ -375,51 +494,94 @@ const VoiceRecorder = ({
         "Transcription Error",
         "Failed to transcribe audio: " + error.message
       );
+      animateError(); // Trigger error animation
       return null;
     }
   };
 
+  // Get button color based on state
+  const getButtonColor = () => {
+    switch (commandState) {
+      case "recording":
+        return "#ff6b6b"; // Red when recording
+      case "processing":
+        return "#f9a826"; // Orange when processing
+      case "success":
+        return "#2ecc71"; // Green for success
+      case "error":
+        return "#e74c3c"; // Red for error
+      default:
+        return "#3498db"; // Blue when idle (default)
+    }
+  };
+
   return (
-    <TouchableOpacity
-      activeOpacity={0.6}
-      onPress={handleVoiceRecordPress}
+    <Animated.View
       style={[
-        styles.voiceButton,
+        styles.buttonContainer,
         {
-          backgroundColor: isRecording
-            ? "#ff6b6b" // Red when recording
-            : "#4C956C", // Green when not recording
-          bottom: isKeyboardVisible ? keyboardHeight + 16 : 16,
+          transform: [
+            { scale: commandState === "recording" ? pulseAnim : scaleAnim },
+          ],
         },
-        style, // Apply custom styles
       ]}
-      disabled={isProcessing}
     >
-      <Ionicons name={isRecording ? "stop" : "mic"} size={24} color="white" />
-      {isProcessing && (
-        <View style={styles.processingIndicator}>
-          <ActivityIndicator size="small" color="white" />
-        </View>
-      )}
-    </TouchableOpacity>
+      <TouchableOpacity
+        activeOpacity={0.6}
+        onPress={handleVoiceRecordPress}
+        style={[
+          styles.voiceButton,
+          {
+            backgroundColor: getButtonColor(),
+            bottom: isKeyboardVisible ? keyboardHeight + 16 : 16,
+          },
+          style, // Apply custom styles
+        ]}
+        disabled={isProcessing}
+      >
+        <Ionicons
+          name={
+            commandState === "recording"
+              ? "stop"
+              : commandState === "success"
+              ? "checkmark"
+              : commandState === "error"
+              ? "alert-circle"
+              : commandState === "processing"
+              ? "mic"
+              : "mic"
+          }
+          size={28}
+          color="white"
+        />
+        {isProcessing && (
+          <View style={styles.processingIndicator}>
+            <ActivityIndicator size="small" color="white" />
+          </View>
+        )}
+      </TouchableOpacity>
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
-  voiceButton: {
+  buttonContainer: {
     position: "absolute",
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    right: 6,
+    bottom: 60, // Add margin bottom to avoid phone navigation buttons
+    zIndex: 100,
+  },
+  voiceButton: {
+    width: 65,
+    height: 65,
+    borderRadius: 999,
     justifyContent: "center",
     alignItems: "center",
-    right: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
     elevation: 5,
-    zIndex: 100,
   },
   processingIndicator: {
     position: "absolute",

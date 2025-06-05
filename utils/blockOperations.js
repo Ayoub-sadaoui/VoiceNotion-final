@@ -99,55 +99,94 @@ export const deleteBlocksByIndices = (editorContent, targetIndices) => {
 };
 
 /**
- * Updates the page content in storage by removing specified blocks
+ * Delete blocks from storage
  * @param {Object} page - The current page object
- * @param {Array} targetIndices - Array of indices of blocks to delete (0-based)
- * @param {Function} savePage - The storage service save function
- * @returns {Promise<Object>} - The updated page object
+ * @param {Array} blockIds - Array of block IDs to delete
+ * @param {Function} savePage - Function to save the page
+ * @returns {Promise<Object>} - Promise resolving to object with updated page and content
  */
-export const deleteBlocksFromStorage = async (
-  page,
-  targetIndices,
-  savePage
-) => {
-  if (!page || !page.id) {
-    console.error("Invalid page object");
-    throw new Error("Invalid page object");
-  }
-
-  if (
-    !targetIndices ||
-    !Array.isArray(targetIndices) ||
-    targetIndices.length === 0
-  ) {
-    console.warn("No target indices provided for deletion");
-    return page;
+export const deleteBlocksFromStorage = async (page, blockIds, savePage) => {
+  if (!page || !Array.isArray(blockIds) || blockIds.length === 0) {
+    console.error("Invalid parameters for deleteBlocksFromStorage");
+    return null;
   }
 
   try {
-    // Parse the current content JSON
-    const currentContent = page.contentJson ? JSON.parse(page.contentJson) : [];
+    // Parse the current content
+    const contentJson = page.contentJson || "[]";
+    let content;
 
-    // Delete the specified blocks
-    const updatedContent = deleteBlocksByIndices(currentContent, targetIndices);
+    try {
+      content = JSON.parse(contentJson);
+    } catch (err) {
+      console.error("Error parsing content JSON:", err);
+      return null;
+    }
+
+    if (!Array.isArray(content)) {
+      console.error("Content is not an array");
+      return null;
+    }
+
+    console.log(
+      `Attempting to delete ${blockIds.length} blocks from content with ${content.length} blocks`
+    );
+
+    // Create a deep copy of the content to avoid mutation issues
+    const updatedContent = JSON.parse(JSON.stringify(content));
+
+    // Helper function to recursively remove blocks by ID
+    const removeBlocksById = (blocks, idsToRemove) => {
+      // Filter out blocks with IDs in the idsToRemove array
+      return blocks.filter((block) => {
+        // Check if this block should be removed
+        const shouldRemove = idsToRemove.includes(block.id);
+
+        // Log the block being checked
+        if (shouldRemove) {
+          console.log(`Removing block with ID: ${block.id}`);
+        }
+
+        // If the block has children, recursively filter them too
+        if (
+          block.children &&
+          Array.isArray(block.children) &&
+          block.children.length > 0
+        ) {
+          block.children = removeBlocksById(block.children, idsToRemove);
+        }
+
+        // Keep the block if it shouldn't be removed
+        return !shouldRemove;
+      });
+    };
+
+    // Remove the blocks
+    const filteredContent = removeBlocksById(updatedContent, blockIds);
+
+    // Log the result
+    console.log(
+      `Content reduced from ${content.length} to ${filteredContent.length} top-level blocks`
+    );
 
     // Create updated page object
     const updatedPage = {
       ...page,
-      contentJson: JSON.stringify(updatedContent),
+      contentJson: JSON.stringify(filteredContent),
       updatedAt: Date.now(),
     };
 
-    // Save the updated page to storage
+    // Save the page
     const savedPage = await savePage(updatedPage);
 
+    // Return the updated page and content
     return {
       page: savedPage,
-      content: updatedContent,
+      content: filteredContent,
     };
   } catch (error) {
-    console.error("Error deleting blocks from storage:", error);
-    throw new Error("Failed to delete blocks");
+    console.error("Error in deleteBlocksFromStorage:", error);
+    return null;
   }
 };
 

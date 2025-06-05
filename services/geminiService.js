@@ -957,12 +957,49 @@ export const processVoiceCommandWithGemini = async (
 
     // Perform a quick pre-check for command words before calling the API
     const commandWords = [
+      // Existing command words
       "delete",
       "remove",
       "create",
       "make",
       "new page",
       "erase",
+      // Text formatting command words
+      "bold",
+      "italic",
+      "underline",
+      "formatting",
+      // Selection command words
+      "select",
+      // Block transformation words
+      "convert",
+      "change",
+      // Undo/redo commands
+      "undo",
+      "redo",
+      // Content modification
+      "replace",
+      "substitute",
+      "append",
+      "prepend",
+      // Color commands
+      "color",
+      "blue",
+      "red",
+      "green",
+      // Block type commands
+      "heading",
+      "paragraph",
+      "list",
+      "bullet",
+      "numbered",
+      "todo",
+      "quote",
+      "code",
+      // Target specifiers
+      "all",
+      "every",
+      "each",
     ];
     const isLikelyCommand = commandWords.some((word) =>
       voiceCommand.toLowerCase().includes(word)
@@ -991,164 +1028,179 @@ export const processVoiceCommandWithGemini = async (
 
     // Log content summary for debugging
     console.log(`Editor has ${processedContent.length} blocks to analyze`);
-    if (processedContent.length > 0) {
-      const contentSummary = processedContent.map((block, idx) => {
-        // Extract first 20 chars of content for logging
-        const textContent =
-          block.content && block.content[0]
-            ? block.content[0].text.substring(0, 20) +
-              (block.content[0].text.length > 20 ? "..." : "")
-            : "[empty]";
-        return `Block ${idx}: ${block.type} - "${textContent}"`;
-      });
-      console.log("Content summary:", contentSummary);
-    }
 
-    // Create the prompt for Gemini that acts as a command router
     const prompt = {
       contents: [
         {
-          role: "user", // First message acts as system instruction
+          role: "user", // First user message acts as system instruction
           parts: [
             {
-              text: `You are a voice command interpreter for a block-based note editor. Your job is to analyze user voice commands and determine what actions to take in a VoiceNotion app.
+              text: `You are an AI assistant specialized in parsing voice commands for a block-based note editor called VoiceNotion. Your task is to analyze a voice command and the current editor content, then return a structured JSON response with the appropriate action to take.
 
-CONTEXT:
-The editor uses a block-based structure similar to Notion. Each block has the following structure:
-{
-  "id": "uniqueId123", // This might not be present in some blocks
-  "type": "paragraph", // or other block type like "heading", "bulletListItem", etc.
-  "props": { properties object },
-  "content": [ { text content objects } ],
-  "children": [] // nested blocks
-}
+AVAILABLE COMMAND TYPES:
 
-Available block types include:
-- "paragraph" - For general text content
-- "heading" (level 1-3) - For titles and headers
-- "bulletListItem" - For unordered lists
-- "numberedListItem" - For ordered lists
-- "checkListItem" - For tasks (with checked: true/false)
-- "quote" - For quoted content
-- "code" - For code snippets
-- "pageLink" - For links to other pages
+1. DELETE_BLOCK - Delete one or more blocks
+2. INSERT_CONTENT - Insert new text content as blocks
+3. CREATE_PAGE - Create a new page
+4. CLARIFICATION - When the command is unclear
+5. APPLY_FORMATTING - Apply formatting to selected text or blocks
+6. SELECT_TEXT - Select text or blocks
+7. REPLACE_TEXT - Replace text or content in blocks
+8. MODIFY_BLOCK - Change block type, properties, or color
+9. UNDO - Undo previous actions
+10. REDO - Redo previously undone actions
 
-USER INTENTS TO DETECT:
-1. INSERT/ADD content (create new blocks)
-2. DELETE/REMOVE blocks
-3. CREATE a new page
-4. Other actions (respond with CLARIFICATION)
+For each command type, return a different JSON structure:
 
-DEFAULT BEHAVIOR:
-When no clear command intent is detected, default to INSERT_CONTENT to add the text as normal content.
-
-PRECISE BLOCK IDENTIFICATION INSTRUCTIONS:
-For DELETE commands, you must determine the EXACT INDICES of blocks to delete:
-1. POSITION-BASED REFERENCES:
-   - "first/second/third/last paragraph/block/item" - Find by position
-   - "last 2 items" - Find the last n items of a specific type
-   - Convert these to 0-based indices (first item = index 0, second = index 1)
-
-2. CONTENT-BASED REFERENCES:
-   - "delete the paragraph about X" - Search for content containing keywords
-   - "remove the item with X" - Look for specific text within blocks
-
-3. TYPE-BASED REFERENCES:
-   - "delete all headings" - Identify all blocks of a specific type
-   - "remove bullet points" - Find all bulletListItems
-
-4. When a command references the "last" item of a certain type:
-   - Scan all blocks from last to first
-   - Find the last occurrence of the specified block type
-   - Include that block's index in targetBlockIds
-
-REQUIRED OUTPUT FORMAT:
-You must respond ONLY with a valid JSON object with this structure:
-
-For deletion commands:
+For DELETE_BLOCK:
 {
   "action": "DELETE_BLOCK",
-  "targetBlockIds": [0, 2, 5],  // Array of indices for blocks to delete (0-based)
+  "targetBlockIds": ["block-id-1", "block-id-2"],
   "success": true
 }
 
-For insertion commands (normal content addition):
+For INSERT_CONTENT:
 {
   "action": "INSERT_CONTENT",
-  "content": "The text content to add",
+  "content": "raw text to insert",
   "success": true
 }
 
-For create new page commands:
+For CREATE_PAGE:
 {
   "action": "CREATE_PAGE",
-  "pageTitle": "Title of the new page",
-  "pageContent": "Content for the new page",
+  "pageTitle": "New Page Title",
+  "pageContent": "Initial content for the page",
   "success": true
 }
 
-For ambiguous commands:
+For APPLY_FORMATTING:
+{
+  "action": "APPLY_FORMATTING",
+  "formattingType": "BOLD|ITALIC|UNDERLINE|REMOVE_FORMATTING",
+  "targetText": "text to format",
+  "targetBlockIds": ["block-id-1"], // If applying to entire blocks
+  "selectionRange": { // If applying to specific text range
+    "blockId": "block-id",
+    "startOffset": 5,
+    "endOffset": 10
+  },
+  "success": true
+}
+
+For SELECT_TEXT:
+{
+  "action": "SELECT_TEXT",
+  "selectionType": "BLOCK|TEXT|RANGE|ALL",
+  "targetText": "text to select",
+  "targetBlockIds": ["block-id-1"], // If selecting entire blocks
+  "selectionRange": { // If selecting specific text range
+    "blockId": "block-id",
+    "startOffset": 5,
+    "endOffset": 10
+  },
+  "success": true
+}
+
+For REPLACE_TEXT:
+{
+  "action": "REPLACE_TEXT",
+  "findText": "text to replace",
+  "replaceWith": "replacement text",
+  "targetBlockIds": ["block-id-1"], // Optional, if replacing in specific blocks
+  "selectionRange": { // Optional, if replacing in specific range
+    "blockId": "block-id",
+    "startOffset": 5,
+    "endOffset": 10
+  },
+  "success": true
+}
+
+For MODIFY_BLOCK:
+{
+  "action": "MODIFY_BLOCK",
+  "modificationType": "CHANGE_TYPE|CHANGE_HEADING_LEVEL|CONVERT_TO_LIST|CHANGE_COLOR|CHANGE_TEXT_COLOR",
+  "targetBlockIds": ["block-id-1"], // Optional, specific blocks to modify
+  "targetBlockType": "heading|paragraph", // Optional, to target all blocks of a type (e.g., "all headings")
+  "targetPosition": "last|first", // Optional, to target the last or first block of a certain type
+  "newType": "heading|paragraph|bulletListItem|numberedListItem|checkListItem|quote|code",
+  "headingLevel": 1, // Only for heading blocks, 1-6
+  "listType": "bullet|numbered|todo", // Only for list conversions
+  "textColor": "blue|red|green|yellow|purple|default", // For color changes
+  "newColor": "blue|red|green|yellow|purple|default", // Alternative name for color
+  "formatType": "bold|italic|underline", // For applying formatting to blocks
+  "success": true
+}
+
+For UNDO:
+{
+  "action": "UNDO",
+  "steps": 1, // Number of steps to undo
+  "success": true
+}
+
+For REDO:
+{
+  "action": "REDO",
+  "steps": 1, // Number of steps to redo
+  "success": true
+}
+
+For CLARIFICATION:
 {
   "action": "CLARIFICATION",
   "message": "I'm not sure what you want to do. Could you be more specific?",
   "success": false
 }
 
-BLOCK ANALYSIS STEPS:
-1. Study the editor content carefully (all blocks in the editor)
-2. For each block, note its index, type, and content text
-3. For DELETE commands:
-   a. Look for position references (first, second, last, etc.)
-   b. Look for content references (block containing specific text)
-   c. Look for type references (all headings, bullet points, etc.)
-   d. Convert these references to array indices
+SPECIAL HANDLING FOR MULTI-BLOCK OPERATIONS:
 
-NEVER return an empty targetBlockIds array for DELETE_BLOCK actions. If you can't identify specific blocks to delete, use CLARIFICATION action instead.
+1. When the command refers to "all headings", set targetBlockType: "heading" instead of listing individual block IDs
+2. When the command refers to "all paragraphs", set targetBlockType: "paragraph"
+3. When the command refers to "all blocks" or "everything", include all block IDs in targetBlockIds
 
-RELATIVE POSITION EXAMPLES:
-- "delete the first paragraph" → targetBlockIds: [0] (assuming first block is a paragraph)
-- "remove the last item" → target the index of the last block
-- "delete the second heading" → find the second occurrence of a heading block
+HANDLING CURRENT SELECTION:
 
-EXAMPLE COMMAND ANALYSIS:
+1. When the command refers to "this block", "current block", "selected block", or similar, set:
+   "useCurrentSelection": true
+   This indicates the app should use the block where the cursor is currently positioned.
 
-Example 1 - Delete a specific block:
-Input: "Delete the paragraph about meeting schedule"
-Editor Content: [
-  {type: "heading", content: [{text: "Project Plan"}]},
-  {type: "paragraph", content: [{text: "Team assignments for next quarter"}]},
-  {type: "paragraph", content: [{text: "Meeting schedule: Monday and Thursday"}]}
-]
-Output: {
-  "action": "DELETE_BLOCK",
-  "targetBlockIds": [2],  // The block containing "Meeting schedule"
-  "success": true
-}
+2. When the command refers to "this text", "selected text", or similar, set:
+   "useCurrentSelection": true
+   "selectionType": "TEXT"
 
-Example 2 - Delete the last item of a specific type:
-Input: "Delete the last bullet point"
-Editor Content: [
-  {type: "paragraph", content: [{text: "Today's agenda:"}]},
-  {type: "bulletListItem", content: [{text: "Review project status"}]},
-  {type: "bulletListItem", content: [{text: "Discuss budget"}]},
-  {type: "bulletListItem", content: [{text: "Plan next steps"}]},
-  {type: "paragraph", content: [{text: "Notes:"}]}
-]
-Output: {
-  "action": "DELETE_BLOCK",
-  "targetBlockIds": [3],  // The last bulletListItem (index 3)
-  "success": true
-}
+HANDLING POSITIONAL REFERENCES:
 
-Example 3 - Simple text input (no command words):
-Input: "Today we discussed the marketing strategy for Q3"
-Output: {
-  "action": "INSERT_CONTENT",
-  "content": "Today we discussed the marketing strategy for Q3",
-  "success": true
-}
+1. When the command refers to "last paragraph", "last block", "latest block", etc., set:
+   "targetPosition": "last"
+   If it specifies a block type like "last heading", also set:
+   "targetBlockType": "heading"
 
-DO NOT output any explanatory text or markdown. ONLY output the JSON object.`,
+2. When the command refers to "first paragraph", "first block", etc., set:
+   "targetPosition": "first"
+   If it specifies a block type, also set the appropriate targetBlockType.
+
+CONTEXT RULES:
+1. If the command is to delete blocks, you must specify at least one valid block ID from the editor content.
+2. For references like "first paragraph", "last heading", etc., use the block IDs from the content.
+3. For text selection or formatting, try to identify the specific text or blocks being referenced.
+4. For unclear commands, use the CLARIFICATION action with a helpful message.
+5. If the command is to insert simple text without specific formatting, use INSERT_CONTENT.
+
+BLOCK TYPE CONVERSION MAPPING:
+- "bullet list" or "bulleted list" → "bulletListItem"
+- "numbered list" or "ordered list" → "numberedListItem"
+- "todo list" or "checklist" or "task list" → "checkListItem"
+- "quote" or "quotation" → "quote"
+- "code block" or "code" → "code"
+- "paragraph" → "paragraph"
+- "heading" → "heading" (with appropriate level)
+
+COLOR MAPPING:
+Map color names to their standard values:
+- blue, red, green, yellow, purple, black, white, gray/grey, orange, pink, brown, cyan, magenta, teal, lime, violet, indigo, maroon, navy, olive, silver, gold
+
+Return only the JSON object with no preamble or explanation.`,
             },
           ],
         },
@@ -1263,6 +1315,7 @@ Editor Content: ${JSON.stringify(processedContent)}`,
         return {
           ...parsedResponse,
           rawCommand: voiceCommand, // Include original command for reference
+          rawTranscription: voiceCommand, // For backward compatibility
         };
       } catch (parseError) {
         console.error("Failed to parse Gemini response as JSON:", parseError);

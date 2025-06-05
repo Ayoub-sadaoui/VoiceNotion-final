@@ -810,6 +810,36 @@ export default function NoteScreen() {
           await handleCreatePageCommand(commandResult);
           break;
 
+        case "APPLY_FORMATTING":
+          // Handle formatting text (bold, italic, underline)
+          await handleApplyFormattingCommand(commandResult);
+          break;
+
+        case "SELECT_TEXT":
+          // Handle selecting text or blocks
+          await handleSelectTextCommand(commandResult);
+          break;
+
+        case "REPLACE_TEXT":
+          // Handle replacing text within blocks
+          await handleReplaceTextCommand(commandResult);
+          break;
+
+        case "MODIFY_BLOCK":
+          // Handle changing block types (paragraph to heading, etc.)
+          await handleModifyBlockCommand(commandResult);
+          break;
+
+        case "UNDO":
+          // Handle undo operations
+          await handleUndoCommand(commandResult);
+          break;
+
+        case "REDO":
+          // Handle redo operations
+          await handleRedoCommand(commandResult);
+          break;
+
         case "CLARIFICATION":
           // Display the clarification message to the user
           Toast.show({
@@ -862,64 +892,121 @@ export default function NoteScreen() {
       // Set loading state
       setIsSaving(true);
 
-      // Delete blocks from storage
-      const result = await deleteBlocksFromStorage(
-        currentPage,
-        commandResult.targetBlockIds,
-        storageSavePage
+      // Log the blocks we're trying to delete
+      console.log("Attempting to delete blocks:", commandResult.targetBlockIds);
+
+      // Get current content to validate block IDs
+      const currentContent = editorContent || initialContent || [];
+
+      // Helper function to check if a block ID exists
+      const blockExists = (blocks, blockId) => {
+        for (const block of blocks) {
+          if (block.id === blockId) {
+            return true;
+          }
+
+          // Check children recursively
+          if (
+            block.children &&
+            Array.isArray(block.children) &&
+            block.children.length > 0
+          ) {
+            if (blockExists(block.children, blockId)) {
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+
+      // Validate that the block IDs exist in the content
+      const validBlockIds = commandResult.targetBlockIds.filter((blockId) =>
+        blockExists(currentContent, blockId)
       );
 
-      // Update local state with the new content
-      if (result && result.content) {
-        // Update both editor content and initial content to ensure consistency
-        setEditorContent(result.content);
-        setInitialContent(result.content);
-        setCurrentPage(result.page);
+      if (validBlockIds.length === 0) {
+        console.warn("No valid block IDs found for deletion");
+        Toast.show({
+          type: "info",
+          text1: "Block Not Found",
+          text2: "Could not find the specified block to delete",
+          visibilityTime: 2000,
+        });
+        setIsSaving(false);
+        return;
+      }
 
-        // Force refresh the editor to show changes - increment by more than 1 for stronger refresh
+      console.log(`Found ${validBlockIds.length} valid blocks to delete`);
+
+      // Delete blocks directly from content
+      // Make a deep copy of the content
+      const updatedContent = JSON.parse(JSON.stringify(currentContent));
+
+      // Helper function to recursively remove blocks by ID
+      const removeBlocksById = (blocks, idsToRemove) => {
+        return blocks.filter((block) => {
+          // Check if this block should be removed
+          const shouldRemove = idsToRemove.includes(block.id);
+
+          // If the block has children, recursively filter them too
+          if (
+            block.children &&
+            Array.isArray(block.children) &&
+            block.children.length > 0
+          ) {
+            block.children = removeBlocksById(block.children, idsToRemove);
+          }
+
+          // Keep the block if it shouldn't be removed
+          return !shouldRemove;
+        });
+      };
+
+      // Remove the blocks
+      const filteredContent = removeBlocksById(updatedContent, validBlockIds);
+
+      // Update state with the new content
+      setEditorContent(filteredContent);
+      setInitialContent(filteredContent);
+
+      // Save to storage
+      if (currentPage) {
+        const contentJsonString = JSON.stringify(filteredContent);
+        const updatedPage = {
+          ...currentPage,
+          contentJson: contentJsonString,
+          updatedAt: Date.now(),
+        };
+
+        const savedPage = await storageSavePage(updatedPage);
+        setCurrentPage(savedPage);
+
+        // Force refresh the editor
         setForceRefresh((prev) => prev + 10);
 
-        // First try: Update editor content directly if possible
+        // Try to update the editor content directly if possible
         if (
           editorRef.current &&
           typeof editorRef.current.setContent === "function"
         ) {
-          console.log("Updating editor content directly after deletion");
-          const success = editorRef.current.setContent(result.content);
-          console.log("Direct content update success:", success);
+          editorRef.current.setContent(filteredContent);
 
           // Try focusing the editor to ensure refresh
           setTimeout(() => {
             if (typeof editorRef.current.focusEditor === "function") {
-              console.log("Focusing editor after deletion");
               editorRef.current.focusEditor();
             }
           }, 50);
         }
 
-        // Second backup approach: Try to force DOM update by manipulating the editor component
-        setTimeout(() => {
-          // Force another refresh after a short delay
-          setForceRefresh((prev) => prev + 1);
-
-          // Try updating content again after timeout
-          if (
-            editorRef.current &&
-            typeof editorRef.current.setContent === "function"
-          ) {
-            editorRef.current.setContent(result.content);
-
-            if (typeof editorRef.current.focusEditor === "function") {
-              editorRef.current.focusEditor();
-            }
-          }
-        }, 100);
-
         // Show success message
         Toast.show({
           type: "success",
           text1: "Success",
-          text2: `Deleted ${commandResult.targetBlockIds.length} block(s)`,
+          text2:
+            validBlockIds.length === 1
+              ? "Block deleted successfully"
+              : `${validBlockIds.length} blocks deleted successfully`,
           visibilityTime: 2000,
         });
       }
@@ -1202,6 +1289,1175 @@ export default function NoteScreen() {
         type: "error",
         text1: "Error",
         text2: "Failed to create new page",
+        visibilityTime: 2000,
+      });
+    }
+  };
+
+  // Handle APPLY_FORMATTING command
+  const handleApplyFormattingCommand = async (commandResult) => {
+    try {
+      // Validate the command result
+      if (!commandResult.formattingType) {
+        console.warn("Missing formatting type in command");
+        Toast.show({
+          type: "info",
+          text1: "Formatting Error",
+          text2: "Please specify what formatting to apply",
+          visibilityTime: 2000,
+        });
+        return;
+      }
+
+      // Set loading state
+      setIsSaving(true);
+
+      // Get current content
+      const currentContent = editorContent || initialContent || [];
+
+      if (currentContent.length === 0) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "No content to format",
+          visibilityTime: 2000,
+        });
+        setIsSaving(false);
+        return;
+      }
+
+      // Determine what to format
+      let targetText = commandResult.targetText;
+      let targetBlockIds = commandResult.targetBlockIds;
+      let formatType = commandResult.formattingType?.toLowerCase();
+
+      // Handle "last paragraph" type commands
+      if (!targetText && !targetBlockIds && formatType) {
+        // If no specific target is provided, format the last block
+        const lastBlock = currentContent[currentContent.length - 1];
+        targetBlockIds = [lastBlock.id];
+      }
+
+      // Make a copy of content to modify
+      const updatedContent = JSON.parse(JSON.stringify(currentContent));
+      let success = false;
+
+      // Apply formatting to target blocks
+      for (const block of updatedContent) {
+        if (!targetBlockIds || targetBlockIds.includes(block.id)) {
+          // Apply to whole block
+          if (block.content && Array.isArray(block.content)) {
+            block.content.forEach((item) => {
+              if (item.type === "text") {
+                if (!item.styles) item.styles = {};
+
+                // Apply the formatting
+                switch (formatType) {
+                  case "bold":
+                    item.styles.bold = true;
+                    break;
+                  case "italic":
+                    item.styles.italic = true;
+                    break;
+                  case "underline":
+                    item.styles.underline = true;
+                    break;
+                  case "remove_formatting":
+                    item.styles = {};
+                    break;
+                }
+                success = true;
+              }
+            });
+          }
+        }
+      }
+
+      if (success) {
+        // Update state variables
+        setEditorContent(updatedContent);
+        setInitialContent(updatedContent);
+
+        // Save to storage
+        if (currentPage) {
+          const contentJsonString = JSON.stringify(updatedContent);
+          const updatedPage = {
+            ...currentPage,
+            contentJson: contentJsonString,
+            updatedAt: Date.now(),
+          };
+
+          const savedPage = await storageSavePage(updatedPage);
+          setCurrentPage(savedPage);
+
+          // Force refresh the editor
+          setForceRefresh((prev) => prev + 10);
+
+          // Try to update the editor content directly if possible
+          if (
+            editorRef.current &&
+            typeof editorRef.current.setContent === "function"
+          ) {
+            editorRef.current.setContent(updatedContent);
+
+            // Try focusing the editor to ensure refresh
+            setTimeout(() => {
+              if (typeof editorRef.current.focusEditor === "function") {
+                editorRef.current.focusEditor();
+              }
+            }, 50);
+          }
+
+          Toast.show({
+            type: "success",
+            text1: "Success",
+            text2: `Applied ${formatType} formatting`,
+            visibilityTime: 2000,
+          });
+        }
+      } else {
+        Toast.show({
+          type: "error",
+          text1: "Formatting Failed",
+          text2: "Could not apply formatting",
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Error applying formatting:", error);
+      Toast.show({
+        type: "error",
+        text1: "Formatting Error",
+        text2: "Failed to apply formatting",
+        visibilityTime: 2000,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle SELECT_TEXT command
+  const handleSelectTextCommand = async (commandResult) => {
+    try {
+      // Validation
+      if (!commandResult.selectionType) {
+        console.warn("Missing selection type in command");
+        Toast.show({
+          type: "info",
+          text1: "Selection Error",
+          text2: "Please specify what to select",
+          visibilityTime: 2000,
+        });
+        return;
+      }
+
+      // Get current content
+      const currentContent = editorContent || initialContent || [];
+
+      if (currentContent.length === 0) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "No content to select from",
+          visibilityTime: 2000,
+        });
+        return;
+      }
+
+      const hasTargetText =
+        commandResult.targetText &&
+        typeof commandResult.targetText === "string";
+
+      // For text selection, we need to use the editor's selection API
+      // Since we can't directly manipulate selection in local storage
+      // We'll try to find the text and then use the editor's selection methods
+
+      // First, find the text in the content
+      if (hasTargetText) {
+        // Helper function to find text in blocks
+        const findTextInBlocks = (blocks, searchText) => {
+          const matches = [];
+          const searchLower = searchText.toLowerCase();
+
+          // Search in a block and its children
+          const searchBlock = (block) => {
+            // Skip if no content
+            if (!block.content || !Array.isArray(block.content)) return;
+
+            // Get full text of the block
+            const blockText = block.content
+              .filter((item) => item.type === "text")
+              .map((item) => item.text)
+              .join("");
+
+            if (!blockText) return;
+
+            // Search for the text (case insensitive)
+            const blockTextLower = blockText.toLowerCase();
+            let index = blockTextLower.indexOf(searchLower);
+
+            if (index !== -1) {
+              matches.push({
+                blockId: block.id,
+                blockType: block.type,
+                startOffset: index,
+                endOffset: index + searchText.length,
+                text: blockText.substring(index, index + searchText.length),
+              });
+            }
+
+            // Search in children
+            if (block.children && Array.isArray(block.children)) {
+              block.children.forEach((child) => searchBlock(child));
+            }
+          };
+
+          // Start search at top level
+          blocks.forEach((block) => searchBlock(block));
+          return matches;
+        };
+
+        // Find matches for the target text
+        const matches = findTextInBlocks(
+          currentContent,
+          commandResult.targetText
+        );
+
+        if (matches && matches.length > 0) {
+          // We found the text, but we can't directly select it in local storage
+          // We need to use the editor's selection API
+
+          // Try to use the editor's selection API if available
+          if (
+            editorRef.current &&
+            typeof editorRef.current.executeVoiceCommand === "function"
+          ) {
+            const selectionCommand = {
+              type: "SELECTION",
+              blockId: matches[0].blockId,
+              startOffset: matches[0].startOffset,
+              endOffset: matches[0].endOffset,
+            };
+
+            // Try to execute the selection command
+            editorRef.current.executeVoiceCommand(selectionCommand);
+
+            // Show success message
+            Toast.show({
+              type: "success",
+              text1: "Selection Complete",
+              text2: `Selected "${commandResult.targetText}"`,
+              visibilityTime: 2000,
+            });
+          } else {
+            // If we can't use the editor API, just show where the text was found
+            Toast.show({
+              type: "info",
+              text1: "Text Found",
+              text2: `Found "${commandResult.targetText}" but cannot select it directly`,
+              visibilityTime: 2000,
+            });
+          }
+        } else {
+          // Text not found
+          Toast.show({
+            type: "info",
+            text1: "Text Not Found",
+            text2: `Could not find "${commandResult.targetText}"`,
+            visibilityTime: 2000,
+          });
+        }
+      } else {
+        // Handle other selection types like block selection
+        Toast.show({
+          type: "info",
+          text1: "Coming Soon",
+          text2: "Advanced selection by voice is coming soon",
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Error selecting text:", error);
+      Toast.show({
+        type: "error",
+        text1: "Selection Error",
+        text2: "Failed to select text",
+        visibilityTime: 2000,
+      });
+    }
+  };
+
+  // Handle REPLACE_TEXT command
+  const handleReplaceTextCommand = async (commandResult) => {
+    try {
+      // Validate required fields
+      if (!commandResult.findText || !commandResult.replaceWith) {
+        console.warn("Missing find or replace text in command");
+        Toast.show({
+          type: "info",
+          text1: "Replace Error",
+          text2: "Please specify text to find and replace",
+          visibilityTime: 2000,
+        });
+        return;
+      }
+
+      // Set loading state
+      setIsSaving(true);
+
+      // Get current content
+      const currentContent = editorContent || initialContent || [];
+
+      if (currentContent.length === 0) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "No content to modify",
+          visibilityTime: 2000,
+        });
+        setIsSaving(false);
+        return;
+      }
+
+      // Make a copy of content to modify
+      const updatedContent = JSON.parse(JSON.stringify(currentContent));
+      let replacementCount = 0;
+
+      // Find and replace text in all blocks (or targeted blocks)
+      const findText = commandResult.findText.toLowerCase();
+      const replaceWith = commandResult.replaceWith;
+      const targetBlockIds = commandResult.targetBlockIds;
+
+      // Helper function to process text content
+      const processTextContent = (content) => {
+        if (!Array.isArray(content)) return 0;
+
+        let count = 0;
+        for (const item of content) {
+          if (item.type === "text" && item.text) {
+            // Case-insensitive search
+            const lowerText = item.text.toLowerCase();
+            const index = lowerText.indexOf(findText);
+
+            if (index !== -1) {
+              // Replace the text while preserving case
+              const before = item.text.substring(0, index);
+              const after = item.text.substring(index + findText.length);
+              item.text = before + replaceWith + after;
+              count++;
+            }
+          }
+        }
+        return count;
+      };
+
+      // Process all blocks or just targeted blocks
+      for (const block of updatedContent) {
+        // Skip if we have target blocks and this isn't one of them
+        if (targetBlockIds && !targetBlockIds.includes(block.id)) {
+          continue;
+        }
+
+        // Process this block's content
+        if (block.content) {
+          replacementCount += processTextContent(block.content);
+        }
+
+        // Also check children blocks recursively
+        if (block.children && Array.isArray(block.children)) {
+          const processChildren = (children) => {
+            for (const child of children) {
+              if (child.content) {
+                replacementCount += processTextContent(child.content);
+              }
+              if (child.children && Array.isArray(child.children)) {
+                processChildren(child.children);
+              }
+            }
+          };
+
+          processChildren(block.children);
+        }
+      }
+
+      // If we made replacements, update the content
+      if (replacementCount > 0) {
+        // Update state variables
+        setEditorContent(updatedContent);
+        setInitialContent(updatedContent);
+
+        // Save to storage
+        if (currentPage) {
+          const contentJsonString = JSON.stringify(updatedContent);
+          const updatedPage = {
+            ...currentPage,
+            contentJson: contentJsonString,
+            updatedAt: Date.now(),
+          };
+
+          const savedPage = await storageSavePage(updatedPage);
+          setCurrentPage(savedPage);
+
+          // Force refresh the editor
+          setForceRefresh((prev) => prev + 10);
+
+          // Try to update the editor content directly if possible
+          if (
+            editorRef.current &&
+            typeof editorRef.current.setContent === "function"
+          ) {
+            editorRef.current.setContent(updatedContent);
+
+            // Try focusing the editor to ensure refresh
+            setTimeout(() => {
+              if (typeof editorRef.current.focusEditor === "function") {
+                editorRef.current.focusEditor();
+              }
+            }, 50);
+          }
+
+          Toast.show({
+            type: "success",
+            text1: "Success",
+            text2:
+              replacementCount === 1
+                ? `Replaced "${commandResult.findText}" with "${commandResult.replaceWith}"`
+                : `Replaced ${replacementCount} occurrences`,
+            visibilityTime: 2000,
+          });
+        }
+      } else {
+        // Show no matches message
+        Toast.show({
+          type: "info",
+          text1: "No Matches",
+          text2: `Could not find "${commandResult.findText}"`,
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Error replacing text:", error);
+      Toast.show({
+        type: "error",
+        text1: "Replace Error",
+        text2: "Failed to replace text",
+        visibilityTime: 2000,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle MODIFY_BLOCK command
+  const handleModifyBlockCommand = async (commandResult) => {
+    try {
+      // Validate required fields
+      if (!commandResult.modificationType) {
+        console.warn("Missing modification type in command");
+        Toast.show({
+          type: "info",
+          text1: "Modification Error",
+          text2: "Please specify how to modify the block",
+          visibilityTime: 2000,
+        });
+        return;
+      }
+
+      // Set loading state
+      setIsSaving(true);
+
+      // Get current content
+      const currentContent = editorContent || initialContent || [];
+
+      if (currentContent.length === 0) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "No content to modify",
+          visibilityTime: 2000,
+        });
+        setIsSaving(false);
+        return;
+      }
+
+      // Make a copy of content to modify
+      const updatedContent = JSON.parse(JSON.stringify(currentContent));
+      let success = false;
+      let modificationDescription = "";
+      let modifiedBlocksCount = 0;
+
+      // Process the modification based on type
+      const modificationType = commandResult.modificationType.toUpperCase();
+
+      // Get target blocks - either specified blocks or blocks of a certain type
+      let targetBlocks = [];
+      let targetBlockIndices = [];
+
+      // Handle "last paragraph" or "last block" reference
+      if (
+        commandResult.targetPosition === "last" ||
+        commandResult.targetPosition === "latest"
+      ) {
+        console.log("Targeting the last block for modification");
+
+        // Find the last block of the specified type or just the last block
+        let lastIndex = updatedContent.length - 1;
+
+        if (commandResult.targetBlockType) {
+          // Find the last block of the specified type
+          for (let i = updatedContent.length - 1; i >= 0; i--) {
+            if (updatedContent[i].type === commandResult.targetBlockType) {
+              lastIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (lastIndex >= 0) {
+          targetBlocks = [updatedContent[lastIndex]];
+          targetBlockIndices = [lastIndex];
+          console.log(
+            `Using last block at index ${lastIndex} for modification`
+          );
+        }
+      }
+      // Handle current selection reference (e.g., "this block", "current block")
+      else if (commandResult.useCurrentSelection === true) {
+        console.log("Using current selection for modification");
+
+        // Try to get the currently focused block from the editor
+        let currentBlockId = null;
+
+        // First try to get it from the editor reference
+        if (
+          editorRef.current &&
+          typeof editorRef.current.getCurrentBlockId === "function"
+        ) {
+          currentBlockId = editorRef.current.getCurrentBlockId();
+        }
+
+        // If that fails, use the last block as a fallback
+        if (!currentBlockId && currentContent.length > 0) {
+          console.log(
+            "No current selection found, using last block as fallback"
+          );
+          const lastBlock = currentContent[currentContent.length - 1];
+          currentBlockId = lastBlock.id;
+        }
+
+        if (currentBlockId) {
+          // Find the block by ID and its index
+          const findBlockByIdWithIndex = (blocks, blockId) => {
+            for (let i = 0; i < blocks.length; i++) {
+              const block = blocks[i];
+              if (block.id === blockId) {
+                return { block, index: i };
+              }
+
+              // Check children recursively
+              if (
+                block.children &&
+                Array.isArray(block.children) &&
+                block.children.length > 0
+              ) {
+                const result = findBlockByIdWithIndex(block.children, blockId);
+                if (result) {
+                  return result;
+                }
+              }
+            }
+            return null;
+          };
+
+          const result = findBlockByIdWithIndex(updatedContent, currentBlockId);
+          if (result) {
+            targetBlocks = [result.block];
+            targetBlockIndices = [result.index];
+            console.log(
+              `Using current block with ID ${currentBlockId} at index ${result.index} for modification`
+            );
+          }
+        }
+
+        // If we still don't have a target block, show an error
+        if (targetBlocks.length === 0) {
+          Toast.show({
+            type: "error",
+            text1: "Selection Error",
+            text2: "Could not determine which block is selected",
+            visibilityTime: 2000,
+          });
+          setIsSaving(false);
+          return;
+        }
+      }
+      // If we have specific block IDs, use those
+      else if (
+        commandResult.targetBlockIds &&
+        Array.isArray(commandResult.targetBlockIds) &&
+        commandResult.targetBlockIds.length > 0
+      ) {
+        // Find blocks by their IDs and track their indices
+        const findBlockByIdWithIndex = (blocks, blockId) => {
+          for (let i = 0; i < blocks.length; i++) {
+            const block = blocks[i];
+            if (block.id === blockId) {
+              return { block, index: i };
+            }
+
+            // Check children recursively
+            if (
+              block.children &&
+              Array.isArray(block.children) &&
+              block.children.length > 0
+            ) {
+              const result = findBlockByIdWithIndex(block.children, blockId);
+              if (result) {
+                return result;
+              }
+            }
+          }
+          return null;
+        };
+
+        // Get all specified blocks
+        for (const blockId of commandResult.targetBlockIds) {
+          const result = findBlockByIdWithIndex(updatedContent, blockId);
+          if (result) {
+            targetBlocks.push(result.block);
+            targetBlockIndices.push(result.index);
+          }
+        }
+      }
+      // If we have a target block type (e.g., "all headings"), find those blocks
+      else if (commandResult.targetBlockType) {
+        // Find blocks by type and track their indices
+        const findBlocksByTypeWithIndices = (blocks, blockType) => {
+          const results = [];
+
+          for (let i = 0; i < blocks.length; i++) {
+            const block = blocks[i];
+            if (block.type === blockType) {
+              results.push({ block, index: i });
+            }
+
+            // Check children recursively
+            if (
+              block.children &&
+              Array.isArray(block.children) &&
+              block.children.length > 0
+            ) {
+              const foundInChildren = findBlocksByTypeWithIndices(
+                block.children,
+                blockType
+              );
+              results.push(...foundInChildren);
+            }
+          }
+
+          return results;
+        };
+
+        // Handle special cases like "all headings"
+        let results = [];
+        if (commandResult.targetBlockType === "heading") {
+          results = findBlocksByTypeWithIndices(updatedContent, "heading");
+        } else if (commandResult.targetBlockType === "paragraph") {
+          results = findBlocksByTypeWithIndices(updatedContent, "paragraph");
+        } else {
+          results = findBlocksByTypeWithIndices(
+            updatedContent,
+            commandResult.targetBlockType
+          );
+        }
+
+        // Extract blocks and indices from results
+        targetBlocks = results.map((result) => result.block);
+        targetBlockIndices = results.map((result) => result.index);
+      }
+      // If no specific targets, use the last block as default
+      else if (updatedContent.length > 0) {
+        targetBlocks = [updatedContent[updatedContent.length - 1]];
+        targetBlockIndices = [updatedContent.length - 1];
+      }
+
+      console.log(
+        `Found ${
+          targetBlocks.length
+        } blocks to modify at indices: ${targetBlockIndices.join(", ")}`
+      );
+
+      // Process each target block
+      for (let i = 0; i < targetBlocks.length; i++) {
+        const block = targetBlocks[i];
+        const blockIndex = targetBlockIndices[i];
+
+        // Skip invalid indices
+        if (blockIndex < 0 || blockIndex >= updatedContent.length) {
+          console.warn(`Invalid block index: ${blockIndex}`);
+          continue;
+        }
+
+        switch (modificationType) {
+          case "CHANGE_TYPE":
+          case "CHANGE_BLOCK_TYPE":
+            // Change block type (paragraph to heading, etc.)
+            if (commandResult.newType) {
+              const oldType = block.type;
+
+              // Directly modify the block in the content array
+              updatedContent[blockIndex] = {
+                ...block,
+                type: commandResult.newType,
+                props: {
+                  ...(block.props || {}),
+                  textColor: block.props?.textColor || "default",
+                  backgroundColor: block.props?.backgroundColor || "default",
+                  textAlignment: block.props?.textAlignment || "left",
+                  // Add level property if it's a heading
+                  ...(commandResult.newType === "heading" &&
+                  commandResult.headingLevel
+                    ? { level: commandResult.headingLevel }
+                    : {}),
+                },
+              };
+
+              modificationDescription = `Changed block from ${oldType} to ${commandResult.newType}`;
+              success = true;
+              modifiedBlocksCount++;
+            }
+            break;
+
+          case "CHANGE_HEADING_LEVEL":
+            // Change heading level
+            if (block.type === "heading" && commandResult.headingLevel) {
+              if (!block.props) block.props = {};
+              block.props.level = commandResult.headingLevel;
+              modificationDescription = `Changed heading to level ${commandResult.headingLevel}`;
+              success = true;
+              modifiedBlocksCount++;
+            }
+            break;
+
+          case "CHANGE_COLOR":
+          case "CHANGE_TEXT_COLOR":
+            // Change text color
+            if (commandResult.newColor || commandResult.textColor) {
+              const color = commandResult.newColor || commandResult.textColor;
+
+              // Apply to block props
+              if (!block.props) block.props = {};
+              block.props.textColor = color;
+
+              // Also apply to all text content items
+              if (block.content && Array.isArray(block.content)) {
+                block.content.forEach((item) => {
+                  if (item.type === "text") {
+                    if (!item.styles) item.styles = {};
+                    item.styles.textColor = color;
+                  }
+                });
+              }
+
+              modificationDescription = `Changed text color to ${color}`;
+              success = true;
+              modifiedBlocksCount++;
+            }
+            break;
+
+          case "CONVERT_TO_LIST":
+            // Handle generic list conversion with listType parameter
+            if (commandResult.listType) {
+              const oldType = block.type;
+              let newType = "bulletListItem"; // Default
+              let description = "bullet list";
+
+              // Determine the correct list type
+              if (
+                commandResult.listType.toLowerCase() === "todo" ||
+                commandResult.listType.toLowerCase() === "check" ||
+                commandResult.listType.toLowerCase() === "checklist"
+              ) {
+                newType = "checkListItem";
+                description = "todo list";
+              } else if (
+                commandResult.listType.toLowerCase() === "numbered" ||
+                commandResult.listType.toLowerCase() === "ordered"
+              ) {
+                newType = "numberedListItem";
+                description = "numbered list";
+              }
+
+              // Directly modify the existing block in the content array
+              updatedContent[blockIndex] = {
+                ...block,
+                type: newType,
+                props: {
+                  ...(block.props || {}),
+                  textColor: block.props?.textColor || "default",
+                  backgroundColor: block.props?.backgroundColor || "default",
+                  textAlignment: block.props?.textAlignment || "left",
+                  // Add checked property only for checkListItem
+                  ...(newType === "checkListItem" ? { checked: false } : {}),
+                },
+              };
+
+              modificationDescription = `Converted ${oldType} to ${description}`;
+              success = true;
+              modifiedBlocksCount++;
+            } else {
+              // If no listType specified, default to bullet list
+              const oldTypeBullet = block.type;
+
+              // Directly modify the existing block in the content array
+              updatedContent[blockIndex] = {
+                ...block,
+                type: "bulletListItem",
+                props: {
+                  ...(block.props || {}),
+                  textColor: block.props?.textColor || "default",
+                  backgroundColor: block.props?.backgroundColor || "default",
+                  textAlignment: block.props?.textAlignment || "left",
+                },
+              };
+
+              modificationDescription = `Converted ${oldTypeBullet} to bullet list`;
+              success = true;
+              modifiedBlocksCount++;
+            }
+            break;
+
+          case "CONVERT_TO_BULLET_LIST":
+            // Convert to bullet list
+            const oldTypeBullet = block.type;
+
+            // Directly modify the existing block in the content array
+            updatedContent[blockIndex] = {
+              ...block,
+              type: "bulletListItem",
+              props: {
+                ...(block.props || {}),
+                textColor: block.props?.textColor || "default",
+                backgroundColor: block.props?.backgroundColor || "default",
+                textAlignment: block.props?.textAlignment || "left",
+              },
+            };
+
+            modificationDescription = `Converted ${oldTypeBullet} to bullet list`;
+            success = true;
+            modifiedBlocksCount++;
+            break;
+
+          case "CONVERT_TO_NUMBERED_LIST":
+            // Convert to numbered list
+            const oldTypeNumbered = block.type;
+
+            // Directly modify the existing block in the content array
+            updatedContent[blockIndex] = {
+              ...block,
+              type: "numberedListItem",
+              props: {
+                ...(block.props || {}),
+                textColor: block.props?.textColor || "default",
+                backgroundColor: block.props?.backgroundColor || "default",
+                textAlignment: block.props?.textAlignment || "left",
+              },
+            };
+
+            modificationDescription = `Converted ${oldTypeNumbered} to numbered list`;
+            success = true;
+            modifiedBlocksCount++;
+            break;
+
+          case "CONVERT_TO_TODO_LIST":
+          case "CONVERT_TO_CHECK_LIST":
+            // Convert to todo/check list
+            const oldTypeTodo = block.type;
+
+            // Directly modify the existing block in the content array
+            updatedContent[blockIndex] = {
+              ...block,
+              type: "checkListItem",
+              props: {
+                ...(block.props || {}),
+                textColor: block.props?.textColor || "default",
+                backgroundColor: block.props?.backgroundColor || "default",
+                textAlignment: block.props?.textAlignment || "left",
+                checked: false,
+              },
+            };
+
+            modificationDescription = `Converted ${oldTypeTodo} to todo list`;
+            success = true;
+            modifiedBlocksCount++;
+            break;
+
+          case "APPLY_FORMATTING":
+            // Apply formatting to all text in the block
+            if (commandResult.formatType) {
+              if (block.content && Array.isArray(block.content)) {
+                block.content.forEach((item) => {
+                  if (item.type === "text") {
+                    if (!item.styles) item.styles = {};
+
+                    // Apply the formatting
+                    switch (commandResult.formatType.toLowerCase()) {
+                      case "bold":
+                        item.styles.bold = true;
+                        break;
+                      case "italic":
+                        item.styles.italic = true;
+                        break;
+                      case "underline":
+                        item.styles.underline = true;
+                        break;
+                    }
+                  }
+                });
+
+                modificationDescription = `Applied ${commandResult.formatType} formatting`;
+                success = true;
+                modifiedBlocksCount++;
+              }
+            }
+            break;
+
+          default:
+            console.warn(`Unknown modification type: ${modificationType}`);
+        }
+      }
+
+      // If modifications were successful, update the content
+      if (success) {
+        // Update state variables
+        setEditorContent(updatedContent);
+        setInitialContent(updatedContent);
+
+        // Save to storage
+        if (currentPage) {
+          const contentJsonString = JSON.stringify(updatedContent);
+          const updatedPage = {
+            ...currentPage,
+            contentJson: contentJsonString,
+            updatedAt: Date.now(),
+          };
+
+          const savedPage = await storageSavePage(updatedPage);
+          setCurrentPage(savedPage);
+
+          // Force refresh the editor
+          setForceRefresh((prev) => prev + 10);
+
+          // Try to update the editor content directly if possible
+          if (
+            editorRef.current &&
+            typeof editorRef.current.setContent === "function"
+          ) {
+            editorRef.current.setContent(updatedContent);
+
+            // Try focusing the editor to ensure refresh
+            setTimeout(() => {
+              if (typeof editorRef.current.focusEditor === "function") {
+                editorRef.current.focusEditor();
+              }
+            }, 50);
+          }
+
+          // Show success message with count if multiple blocks were modified
+          Toast.show({
+            type: "success",
+            text1: "Success",
+            text2:
+              modifiedBlocksCount > 1
+                ? `Modified ${modifiedBlocksCount} blocks: ${modificationDescription}`
+                : modificationDescription || "Modified block successfully",
+            visibilityTime: 2000,
+          });
+        }
+      } else {
+        Toast.show({
+          type: "error",
+          text1: "Modification Failed",
+          text2:
+            targetBlocks.length === 0
+              ? "Could not find any blocks to modify"
+              : "Could not modify the block(s)",
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Error modifying blocks:", error);
+      Toast.show({
+        type: "error",
+        text1: "Modification Error",
+        text2: "Failed to modify blocks",
+        visibilityTime: 2000,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle UNDO command
+  const handleUndoCommand = async (commandResult) => {
+    try {
+      // Get the number of steps to undo (default to 1)
+      const steps = commandResult.steps || 1;
+
+      // For undo/redo, we need to rely on the editor's history
+      // We can't implement this directly with local storage since we don't track history
+      // So we'll try to use the editor's undo/redo methods if available
+
+      if (editorRef.current && typeof editorRef.current.undo === "function") {
+        // Execute the undo command using the editor's method
+        const undoResult = editorRef.current.undo(steps);
+
+        // If undo was successful, we need to get the updated content
+        if (undoResult) {
+          // Try to get the updated content from the editor
+          const editor = editorRef.current?.getEditor
+            ? editorRef.current.getEditor()
+            : null;
+
+          if (editor) {
+            const updatedContent = editor.topLevelBlocks;
+
+            // Update state variables
+            setEditorContent(updatedContent);
+            setInitialContent(updatedContent);
+
+            // Save to storage
+            if (currentPage) {
+              const contentJsonString = JSON.stringify(updatedContent);
+              const updatedPage = {
+                ...currentPage,
+                contentJson: contentJsonString,
+                updatedAt: Date.now(),
+              };
+
+              const savedPage = await storageSavePage(updatedPage);
+              setCurrentPage(savedPage);
+
+              // Force refresh the editor
+              setForceRefresh((prev) => prev + 10);
+
+              // Show success message
+              Toast.show({
+                type: "success",
+                text1: "Success",
+                text2:
+                  steps === 1 ? "Undid last change" : `Undid ${steps} changes`,
+                visibilityTime: 2000,
+              });
+            }
+          }
+        } else {
+          // Show error message
+          Toast.show({
+            type: "info",
+            text1: "Cannot Undo",
+            text2: "No more actions to undo",
+            visibilityTime: 2000,
+          });
+        }
+      } else {
+        // If the editor's undo method is not available
+        Toast.show({
+          type: "info",
+          text1: "Undo Unavailable",
+          text2: "Undo functionality is not available right now",
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Error performing undo:", error);
+      Toast.show({
+        type: "error",
+        text1: "Undo Error",
+        text2: "Failed to undo",
+        visibilityTime: 2000,
+      });
+    }
+  };
+
+  // Handle REDO command
+  const handleRedoCommand = async (commandResult) => {
+    try {
+      // Get the number of steps to redo (default to 1)
+      const steps = commandResult.steps || 1;
+
+      // Similar to undo, we need to rely on the editor's history
+      // We can't implement this directly with local storage
+
+      if (editorRef.current && typeof editorRef.current.redo === "function") {
+        // Execute the redo command using the editor's method
+        const redoResult = editorRef.current.redo(steps);
+
+        // If redo was successful, we need to get the updated content
+        if (redoResult) {
+          // Try to get the updated content from the editor
+          const editor = editorRef.current?.getEditor
+            ? editorRef.current.getEditor()
+            : null;
+
+          if (editor) {
+            const updatedContent = editor.topLevelBlocks;
+
+            // Update state variables
+            setEditorContent(updatedContent);
+            setInitialContent(updatedContent);
+
+            // Save to storage
+            if (currentPage) {
+              const contentJsonString = JSON.stringify(updatedContent);
+              const updatedPage = {
+                ...currentPage,
+                contentJson: contentJsonString,
+                updatedAt: Date.now(),
+              };
+
+              const savedPage = await storageSavePage(updatedPage);
+              setCurrentPage(savedPage);
+
+              // Force refresh the editor
+              setForceRefresh((prev) => prev + 10);
+
+              // Show success message
+              Toast.show({
+                type: "success",
+                text1: "Success",
+                text2:
+                  steps === 1
+                    ? "Redid last undone change"
+                    : `Redid ${steps} undone changes`,
+                visibilityTime: 2000,
+              });
+            }
+          }
+        } else {
+          // Show error message
+          Toast.show({
+            type: "info",
+            text1: "Cannot Redo",
+            text2: "No more actions to redo",
+            visibilityTime: 2000,
+          });
+        }
+      } else {
+        // If the editor's redo method is not available
+        Toast.show({
+          type: "info",
+          text1: "Redo Unavailable",
+          text2: "Redo functionality is not available right now",
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Error performing redo:", error);
+      Toast.show({
+        type: "error",
+        text1: "Redo Error",
+        text2: "Failed to redo",
         visibilityTime: 2000,
       });
     }

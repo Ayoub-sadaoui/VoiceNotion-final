@@ -39,3 +39,63 @@ Try saying:
 Try saying:
 "Today's workout plan start with a heading called warm-up then list jumping jacks arm circles and light jog now add a heading called main exercises and list as numbered items squats 3 sets push-ups 3 sets lunges 2 sets finally add a heading called cool down with stretches as bullet points"
 
+## New! Content Editing Commands
+
+Here are examples of voice commands you can use to edit your notes:
+
+### 1. Text Formatting
+
+Try saying:
+"Make the last paragraph bold"
+"Make the first heading italic"
+"Underline the text that says project timeline"
+"Change the heading color to blue"
+"Make the last paragraph color red"
+"Change the color of all headings to green"
+"Make all paragraphs italic"
+
+### 2. Text Selection
+
+Try saying:
+"Select the last paragraph"
+"Select from 'project timeline' to 'next steps'"
+"Select all headings"
+"Select the text that says customer feedback"
+
+### 3. Content Modification
+
+Try saying:
+"Replace 'customer feedback' with 'client comments'"
+"Change the heading 'Ingredients' to 'Required Ingredients'"
+"Delete everything after 'next steps'"
+"Replace Untitled Page with My Project Notes"
+
+### 4. Block Transformation
+
+Try saying:
+"Convert the paragraph about timeline to a bulleted list"
+"Change the first heading to heading level 2"
+"Make this paragraph a quote block"
+"Convert this paragraph to a bullet list"
+"Change the last paragraph to a numbered list"
+"Convert this text to a todo list"
+"Convert this block to a bullet list"
+"Make this block a heading"
+"Change current block to a todo list"
+"Turn this block into a quote"
+
+### 5. Undo/Redo Operations
+
+Try saying:
+"Undo last change"
+"Redo"
+"Undo the last two changes"
+
+### 6. Multiple Block Operations
+
+Try saying:
+"Change all headings to blue"
+"Make all paragraphs italic"
+"Convert all paragraphs to bullet lists"
+"Change the color of all blocks to green"
+"Make all headings level 2"
