@@ -18,47 +18,6 @@ const sendMessageToEditor = (webViewRef, message) => {
 };
 
 /**
- * Process voice intent and send appropriate message to the editor
- * @param {Object} webViewRef - Reference to the WebView
- * @param {Object} intent - Intent object from voice processing
- */
-const processVoiceIntent = (webViewRef, intent) => {
-  if (!intent || !intent.type) {
-    console.error("Invalid intent", intent);
-    return;
-  }
-
-  switch (intent.type) {
-    case "ADD_TEXT":
-      sendMessageToEditor(webViewRef, {
-        type: "ADD_TEXT",
-        text: intent.text || "",
-      });
-      break;
-
-    case "FORMAT_TEXT":
-      sendMessageToEditor(webViewRef, {
-        type: "FORMAT_TEXT",
-        format: intent.format || "bold",
-        value: intent.value !== undefined ? intent.value : true,
-      });
-      break;
-
-    case "CREATE_BLOCK":
-      sendMessageToEditor(webViewRef, {
-        type: "CREATE_BLOCK",
-        blockType: intent.blockType || "paragraph",
-        text: intent.text || "",
-        level: intent.level,
-      });
-      break;
-
-    default:
-      console.error("Unknown intent type", intent.type);
-  }
-};
-
-/**
  * Get editor content
  * @param {Object} webViewRef - Reference to the WebView
  */
@@ -134,7 +93,6 @@ const saveContent = (webViewRef, callback) => {
 
 export default {
   sendMessageToEditor,
-  processVoiceIntent,
   getEditorContent,
   applyTextFormatting,
   insertBlock,
