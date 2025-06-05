@@ -12,6 +12,7 @@ const COMMAND_CATEGORIES = {
   CONTENT_MODIFICATION: "CONTENT_MODIFICATION",
   BLOCK_TRANSFORMATION: "BLOCK_TRANSFORMATION",
   UNDO_REDO: "UNDO_REDO",
+  BLOCK_MANIPULATION: "BLOCK_MANIPULATION",
 };
 
 // Command types for specific operations
@@ -46,6 +47,9 @@ const COMMAND_TYPES = {
   UNDO: "UNDO",
   REDO: "REDO",
   UNDO_MULTIPLE: "UNDO_MULTIPLE",
+
+  // Block manipulation
+  DELETE_BLOCK: "DELETE_BLOCK",
 };
 
 // Command patterns with examples and their corresponding intents
@@ -234,11 +238,35 @@ const COMMAND_PATTERNS = [
   {
     category: COMMAND_CATEGORIES.BLOCK_TRANSFORMATION,
     type: COMMAND_TYPES.CHANGE_BLOCK_TYPE,
-    patterns: ["convert * to a *", "change * to *", "make * a *"],
+    patterns: [
+      "convert * to *",
+      "change * to *",
+      "make * a *",
+      "transform * into *",
+      "turn * into *",
+      "convert this to *",
+      "change this to *",
+      "make this a *",
+      "transform this into *",
+      "turn this into *",
+      "convert this block to *",
+      "change this block to *",
+      "make this block a *",
+      "convert selected block to *",
+      "change selected block to *",
+      "convert current block to *",
+      "change current block to *",
+    ],
     examples: [
-      "Convert the paragraph about timeline to a bulleted list",
-      "Change the last paragraph to a quote block",
-      "Make this text a code block",
+      "Convert the last paragraph to a heading",
+      "Change the first paragraph to a bullet list",
+      "Make the second heading a paragraph",
+      "Transform the third block into a quote",
+      "Turn the last block into a code block",
+      "Convert this to a heading",
+      "Change this block to a bullet list",
+      "Make this a paragraph",
+      "Convert selected block to heading",
     ],
   },
   {
@@ -287,6 +315,39 @@ const COMMAND_PATTERNS = [
       "Undo 3 changes",
       "Undo the last two changes",
       "Go back 5 steps",
+    ],
+  },
+
+  // Block deletion patterns
+  {
+    category: COMMAND_CATEGORIES.BLOCK_MANIPULATION,
+    type: COMMAND_TYPES.DELETE_BLOCK,
+    patterns: [
+      "delete * block",
+      "remove * block",
+      "delete *",
+      "remove *",
+      "delete this",
+      "remove this",
+      "delete this block",
+      "remove this block",
+      "delete selected block",
+      "remove selected block",
+      "delete current block",
+      "remove current block",
+      "erase this",
+      "erase this block",
+      "erase selected block",
+    ],
+    examples: [
+      "Delete the last block",
+      "Remove the first paragraph",
+      "Delete all headings",
+      "Remove the third block",
+      "Delete this block",
+      "Remove this",
+      "Delete selected block",
+      "Erase this block",
     ],
   },
 ];

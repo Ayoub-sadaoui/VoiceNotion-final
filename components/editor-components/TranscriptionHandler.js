@@ -446,18 +446,81 @@ const redo = (editor, steps = 1) => {
   }
 };
 
-// Export a single default object with all the functions
+/**
+ * Gets the currently selected/focused block
+ * @param {Object} editor - BlockNote editor instance
+ * @returns {Object|null} The selected block or null if none found
+ */
+const getCurrentBlock = (editor) => {
+  try {
+    if (!editor) {
+      console.error("No editor instance provided to getCurrentBlock");
+      return null;
+    }
+
+    // Try to get the current selection
+    const selection = editor.getSelection();
+
+    if (selection && selection.anchor && selection.anchor.blockId) {
+      console.log(`Current selection in block: ${selection.anchor.blockId}`);
+      const block = editor.getBlock(selection.anchor.blockId);
+      if (block) {
+        return block;
+      }
+    }
+
+    // If no selection found through the API, try the internal state
+    if (editor._tiptapEditor && editor._tiptapEditor.state) {
+      const { state } = editor._tiptapEditor;
+
+      // Check if there's a selection
+      if (state.selection) {
+        // Get the block node at the current selection
+        const $anchor = state.selection.$anchor;
+        if ($anchor) {
+          // Try to find the closest block node
+          let depth = $anchor.depth;
+          while (depth > 0) {
+            const node = $anchor.node(depth);
+            if (node && node.attrs && node.attrs.id) {
+              const blockId = node.attrs.id;
+              console.log(`Found block at depth ${depth} with ID: ${blockId}`);
+              const block = editor.getBlock(blockId);
+              if (block) {
+                return block;
+              }
+            }
+            depth--;
+          }
+        }
+      }
+    }
+
+    // If all else fails, return the last block as fallback
+    const blocks = editor.topLevelBlocks;
+    if (blocks && blocks.length > 0) {
+      return blocks[blocks.length - 1];
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error in getCurrentBlock:", error);
+    return null;
+  }
+};
+
+// Export all the handler functions
 export default {
   insertTranscribedText,
-  insertTranscribedTextBlock,
   insertPageLinkBlock,
   applyFormatting,
-  changeBlockType,
-  findTextInBlocks,
   selectText,
   replaceText,
+  changeBlockType,
   undo,
   redo,
+  findTextInBlocks,
   FORMAT_TYPES,
   BLOCK_TYPES,
+  getCurrentBlock,
 };

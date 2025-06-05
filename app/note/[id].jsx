@@ -872,39 +872,93 @@ export default function NoteScreen() {
 
   // Handle DELETE_BLOCK command
   const handleDeleteBlockCommand = async (commandResult) => {
-    // Check if we have target block IDs to delete
-    if (
-      !commandResult.targetBlockIds ||
-      !Array.isArray(commandResult.targetBlockIds) ||
-      commandResult.targetBlockIds.length === 0
-    ) {
-      console.warn("No target blocks specified for deletion");
-      Toast.show({
-        type: "info",
-        text1: "Command Unclear",
-        text2: "Please specify which block to delete",
-        visibilityTime: 2000,
-      });
-      return;
-    }
-
     try {
-      // Set loading state
       setIsSaving(true);
+      console.log("Executing delete block command");
 
-      // Log the blocks we're trying to delete
-      console.log("Attempting to delete blocks:", commandResult.targetBlockIds);
-
-      // Get current content to validate block IDs
+      // Get the latest content
       const currentContent = editorContent || initialContent || [];
+      if (!currentContent || currentContent.length === 0) {
+        console.warn("No content to delete blocks from");
+        Toast.show({
+          type: "info",
+          text1: "No Content",
+          text2: "There are no blocks to delete",
+          visibilityTime: 2000,
+        });
+        setIsSaving(false);
+        return;
+      }
 
-      // Helper function to check if a block ID exists
+      // Check if we need to use the current selection
+      if (commandResult.useCurrentSelection === true) {
+        console.log("Using current selection for delete operation");
+
+        // Try to get the currently focused block from the editor
+        let currentBlockId = null;
+
+        // First try to get it from the editor reference
+        if (
+          editorRef.current &&
+          typeof editorRef.current.getCurrentBlockId === "function"
+        ) {
+          try {
+            currentBlockId = editorRef.current.getCurrentBlockId();
+            console.log(
+              "Got current block ID from editor for deletion:",
+              currentBlockId
+            );
+          } catch (error) {
+            console.error(
+              "Error getting current block ID for deletion:",
+              error
+            );
+          }
+        }
+
+        // If that fails, use the last block as a fallback
+        if (!currentBlockId && currentContent.length > 0) {
+          console.log(
+            "No current selection found, using last block as fallback for deletion"
+          );
+          const lastBlock = currentContent[currentContent.length - 1];
+          currentBlockId = lastBlock.id;
+          console.log(
+            "Using last block ID as fallback for deletion:",
+            currentBlockId
+          );
+        }
+
+        // If we found a block ID, use it for deletion
+        if (currentBlockId) {
+          commandResult.targetBlockIds = [currentBlockId];
+          console.log("Set target block for deletion:", currentBlockId);
+        }
+      }
+
+      // Validate block IDs to delete
+      if (
+        !commandResult.targetBlockIds ||
+        !Array.isArray(commandResult.targetBlockIds) ||
+        commandResult.targetBlockIds.length === 0
+      ) {
+        console.warn("No valid block IDs to delete");
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Could not determine which block(s) to delete",
+          visibilityTime: 2000,
+        });
+        setIsSaving(false);
+        return;
+      }
+
+      // Check if the blocks to delete exist
       const blockExists = (blocks, blockId) => {
         for (const block of blocks) {
           if (block.id === blockId) {
             return true;
           }
-
           // Check children recursively
           if (
             block.children &&
@@ -1833,7 +1887,16 @@ export default function NoteScreen() {
           editorRef.current &&
           typeof editorRef.current.getCurrentBlockId === "function"
         ) {
-          currentBlockId = editorRef.current.getCurrentBlockId();
+          try {
+            currentBlockId = editorRef.current.getCurrentBlockId();
+            console.log("Got current block ID from editor:", currentBlockId);
+          } catch (error) {
+            console.error("Error getting current block ID:", error);
+          }
+        } else {
+          console.warn(
+            "Editor reference or getCurrentBlockId method not available"
+          );
         }
 
         // If that fails, use the last block as a fallback
@@ -1843,6 +1906,7 @@ export default function NoteScreen() {
           );
           const lastBlock = currentContent[currentContent.length - 1];
           currentBlockId = lastBlock.id;
+          console.log("Using last block ID as fallback:", currentBlockId);
         }
 
         if (currentBlockId) {
@@ -1851,6 +1915,7 @@ export default function NoteScreen() {
             for (let i = 0; i < blocks.length; i++) {
               const block = blocks[i];
               if (block.id === blockId) {
+                console.log(`Found block with ID ${blockId} at index ${i}`);
                 return { block, index: i };
               }
 
@@ -1876,11 +1941,16 @@ export default function NoteScreen() {
             console.log(
               `Using current block with ID ${currentBlockId} at index ${result.index} for modification`
             );
+          } else {
+            console.warn(
+              `Block with ID ${currentBlockId} not found in content`
+            );
           }
         }
 
         // If we still don't have a target block, show an error
         if (targetBlocks.length === 0) {
+          console.error("Could not determine which block is selected");
           Toast.show({
             type: "error",
             text1: "Selection Error",

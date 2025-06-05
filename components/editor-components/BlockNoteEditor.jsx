@@ -549,6 +549,16 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         getCurrentBlockId: () => {
           if (editor) {
             try {
+              console.log("Getting current block ID from editor");
+
+              // Use the TranscriptionHandler's getCurrentBlock function
+              const currentBlock = TranscriptionHandler.getCurrentBlock(editor);
+              if (currentBlock && currentBlock.id) {
+                console.log(`Found current block with ID: ${currentBlock.id}`);
+                return currentBlock.id;
+              }
+
+              // If TranscriptionHandler method fails, fall back to previous implementation
               // Try to get the current selection
               const selection = editor.getSelection();
 
@@ -559,13 +569,58 @@ const BlockNoteEditor = forwardRef((props, ref) => {
                 return selection.anchor.blockId;
               }
 
-              // If no selection, try to get the focused block
-              const focusedBlock =
-                editor._tiptapEditor?.state?.selection?.$anchor?.node;
-              if (focusedBlock && focusedBlock.attrs && focusedBlock.attrs.id) {
-                console.log(`Current focused block: ${focusedBlock.attrs.id}`);
-                return focusedBlock.attrs.id;
+              // If no selection, try to get the focused block from TipTap editor state
+              if (editor._tiptapEditor && editor._tiptapEditor.state) {
+                const { state } = editor._tiptapEditor;
+
+                // Check if there's a selection
+                if (state.selection) {
+                  // Get the block node at the current selection
+                  const $anchor = state.selection.$anchor;
+                  if ($anchor) {
+                    // Try to find the closest block node
+                    let depth = $anchor.depth;
+                    while (depth > 0) {
+                      const node = $anchor.node(depth);
+                      if (node && node.attrs && node.attrs.id) {
+                        console.log(
+                          `Found block at depth ${depth} with ID: ${node.attrs.id}`
+                        );
+                        return node.attrs.id;
+                      }
+                      depth--;
+                    }
+
+                    // If we get here, try the direct node
+                    const node = $anchor.node();
+                    if (node && node.attrs && node.attrs.id) {
+                      console.log(`Direct node has ID: ${node.attrs.id}`);
+                      return node.attrs.id;
+                    }
+                  }
+                }
+
+                // Try to get the document's last node as fallback
+                const lastNode = state.doc.lastChild;
+                if (lastNode && lastNode.attrs && lastNode.attrs.id) {
+                  console.log(
+                    `Using last node ID as fallback: ${lastNode.attrs.id}`
+                  );
+                  return lastNode.attrs.id;
+                }
               }
+
+              // If all else fails, try to get the last block from BlockNote API
+              const blocks = editor.topLevelBlocks;
+              if (blocks && blocks.length > 0) {
+                const lastBlock = blocks[blocks.length - 1];
+                console.log(
+                  `Using last block ID from API as fallback: ${lastBlock.id}`
+                );
+                return lastBlock.id;
+              }
+
+              console.warn("Could not determine current block ID");
             } catch (error) {
               console.error("Error getting current block ID:", error);
             }
