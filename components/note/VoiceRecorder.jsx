@@ -1,9 +1,15 @@
-import React, { useState } from "react";
-import { TouchableOpacity, StyleSheet, Alert } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  View,
+  ActivityIndicator,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
-import { processTranscriptionWithGemini } from "../../services/geminiService";
+import geminiService from "../../services/geminiService";
 
 // API Key for Google Cloud Speech-to-Text
 // SECURITY NOTE: In production, this should be moved to a secure backend
@@ -14,14 +20,30 @@ const GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY =
 console.log("Speech API Key available:", !!GOOGLE_CLOUD_SPEECH_TO_TEXT_API_KEY);
 
 const VoiceRecorder = ({
-  onTranscriptionComplete,
+  onCommandProcessed,
+  editorContent,
   theme,
   isKeyboardVisible,
   keyboardHeight,
+  style = {},
 }) => {
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Reset recording when component unmounts
+  useEffect(() => {
+    return () => {
+      // Clean up recording on unmount
+      if (recording) {
+        try {
+          recording.stopAndUnloadAsync();
+        } catch (err) {
+          console.error("Error cleaning up recording:", err);
+        }
+      }
+    };
+  }, [recording]);
 
   // Handle voice record button press
   const handleVoiceRecordPress = async () => {
@@ -36,26 +58,70 @@ const VoiceRecorder = ({
 
           // Check if we have valid transcription text
           if (rawTranscription) {
-            // Process the raw transcription with Gemini to get structured blocks
-            console.log("Raw transcription:", rawTranscription);
-
             try {
-              // Process with Gemini to get structured blocks
-              const geminiResult = await processTranscriptionWithGemini(
-                rawTranscription
-              );
-              console.log("Gemini processing result:", geminiResult);
+              // Process as a voice command using the unified approach
+              console.log("Processing voice input:", rawTranscription);
 
-              // Send the structured result to parent component
-              onTranscriptionComplete(geminiResult);
-            } catch (geminiError) {
-              console.error("Error processing with Gemini:", geminiError);
-              // Fallback to raw text if Gemini processing fails
-              onTranscriptionComplete({
-                success: false,
-                error: "Failed to process with Gemini",
-                rawText: rawTranscription,
-              });
+              // Log editor content information for debugging
+              if (editorContent && Array.isArray(editorContent)) {
+                console.log(
+                  `VoiceRecorder received ${editorContent.length} blocks to analyze`
+                );
+                if (editorContent.length > 0) {
+                  // Log a summary of blocks for debugging
+                  const contentSummary = editorContent
+                    .slice(0, 3)
+                    .map((block, idx) => {
+                      const blockText =
+                        block.content && block.content[0]
+                          ? block.content[0].text.substring(0, 20) +
+                            (block.content[0].text.length > 20 ? "..." : "")
+                          : "[empty]";
+                      return `${idx}: ${block.type} - "${blockText}"`;
+                    });
+                  console.log("Editor content sample:", contentSummary);
+                  if (editorContent.length > 3) {
+                    console.log(
+                      `...and ${editorContent.length - 3} more blocks`
+                    );
+                  }
+                }
+              } else {
+                console.warn(
+                  "VoiceRecorder received empty or invalid editor content"
+                );
+              }
+
+              // Process with Gemini to determine intent and action
+              const commandResult =
+                await geminiService.processVoiceCommandWithGemini(
+                  rawTranscription,
+                  editorContent || []
+                );
+              console.log("Voice command processing result:", commandResult);
+
+              // Send the result to parent component
+              if (onCommandProcessed) {
+                onCommandProcessed({
+                  ...commandResult,
+                  rawTranscription,
+                });
+              }
+            } catch (commandError) {
+              console.error(
+                "Error processing voice command with Gemini:",
+                commandError
+              );
+              // Notify parent of the error
+              if (onCommandProcessed) {
+                onCommandProcessed({
+                  success: false,
+                  action: "CLARIFICATION",
+                  message:
+                    "I had trouble understanding your input. Please try again.",
+                  rawTranscription,
+                });
+              }
             }
           }
           setIsProcessing(false);
@@ -75,27 +141,51 @@ const VoiceRecorder = ({
         return;
       }
 
-      // Permission is granted, start recording
-      await startRecording();
+      // Ensure no active recordings exist before starting a new one
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+          staysActiveInBackground: false,
+        });
+
+        // Check for any existing recordings in the system
+        if (recording) {
+          console.log("Found existing recording, stopping it first");
+          await recording.stopAndUnloadAsync();
+          setRecording(null);
+        }
+
+        // Permission is granted, start recording
+        await startRecording();
+      } catch (error) {
+        console.error("Error preparing for recording:", error);
+        Alert.alert(
+          "Recording Error",
+          "Could not start recording. Please try again in a moment."
+        );
+
+        // Reset recording state to ensure we can try again
+        setIsRecording(false);
+        setRecording(null);
+      }
     } catch (error) {
       console.error("Error in voice recording process:", error);
-      Alert.alert("Error", "Failed to handle voice recording.");
+      Alert.alert(
+        "Error",
+        "Failed to handle voice recording: " + error.message
+      );
       setIsProcessing(false);
+      setIsRecording(false);
+      setRecording(null);
     }
   };
 
   // Start recording function
   const startRecording = async () => {
     try {
-      // Set audio mode for recording
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-        staysActiveInBackground: false,
-      });
-
       // Use AMR format which is well-supported by Google Speech-to-Text
       const { recording: newRecording } = await Audio.Recording.createAsync({
         android: {
@@ -123,9 +213,14 @@ const VoiceRecorder = ({
       // Update state
       setRecording(newRecording);
       setIsRecording(true);
+      console.log("Recording started successfully");
     } catch (error) {
       console.error("Failed to start recording:", error);
       Alert.alert("Error", "Failed to start recording. Please try again.");
+
+      // Reset recording state
+      setIsRecording(false);
+      setRecording(null);
     }
   };
 
@@ -138,6 +233,7 @@ const VoiceRecorder = ({
     try {
       // Stop the recording
       await recording.stopAndUnloadAsync();
+      console.log("Recording stopped successfully");
 
       // Get the recorded URI
       const uri = recording.getURI();
@@ -283,26 +379,28 @@ const VoiceRecorder = ({
     }
   };
 
-  // Determine the proper icon based on component state
-  const buttonIcon = isRecording ? "stop" : isProcessing ? "hourglass" : "mic";
-
   return (
     <TouchableOpacity
+      activeOpacity={0.6}
+      onPress={handleVoiceRecordPress}
       style={[
         styles.voiceButton,
         {
           backgroundColor: isRecording
-            ? "#FF3B30"
-            : isProcessing
-            ? "#FFA500"
-            : theme.primary,
-          bottom: isKeyboardVisible ? keyboardHeight + 50 : 60,
+            ? "#ff6b6b" // Red when recording
+            : "#4C956C", // Green when not recording
+          bottom: isKeyboardVisible ? keyboardHeight + 16 : 16,
         },
+        style, // Apply custom styles
       ]}
-      onPress={handleVoiceRecordPress}
       disabled={isProcessing}
     >
-      <Ionicons name={buttonIcon} size={28} color="white" />
+      <Ionicons name={isRecording ? "stop" : "mic"} size={24} color="white" />
+      {isProcessing && (
+        <View style={styles.processingIndicator}>
+          <ActivityIndicator size="small" color="white" />
+        </View>
+      )}
     </TouchableOpacity>
   );
 };
@@ -310,20 +408,27 @@ const VoiceRecorder = ({
 const styles = StyleSheet.create({
   voiceButton: {
     position: "absolute",
-    right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: "center",
     alignItems: "center",
+    right: 16,
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
     elevation: 5,
+    zIndex: 100,
+  },
+  processingIndicator: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
 

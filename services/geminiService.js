@@ -274,7 +274,7 @@ export const processTranscriptionWithGemini = async (transcription) => {
           role: "user", // First user message acts as system instruction
           parts: [
             {
-              text: `You are a specialized JSON formatter that transforms transcribed speech into BlockNote.js editor blocks. First analyze the context of the transcription, then output structured blocks that match BlockNote's exact JSON format.
+              text: `You are a specialized JSON formatter that transforms transcribed speech into BlockNote.js editor blocks. First analyze the context and intent of the voice transcription deeply, then output structured blocks that match BlockNote's exact JSON format.
 
 REQUIRED BLOCK STRUCTURE FORMAT:
 Each block must have this exact structure:
@@ -296,23 +296,35 @@ Each block must have this exact structure:
   "children": []
 }
 
-CONTEXTUAL ANALYSIS INSTRUCTIONS:
-1. Analyze the transcription to determine the context and purpose (e.g., notes, list, meeting minutes)
-2. Identify if there are headings, list items, tasks, or quotes implied in the text
-3. Separate multiple ideas/points into appropriate blocks
-4. Choose the most appropriate block type for each part of the content
-5. Structure the output as blocks that best represent the intended content
-6. Detect if the user wants to create a new page (see NEW PAGE DETECTION below)
+ENHANCED CONTEXTUAL ANALYSIS INSTRUCTIONS:
+1. Analyze the transcription to determine the precise context, purpose, and intent
+2. Consider the semantic meaning and natural organization of the content
+3. Listen for implicit and explicit cues that suggest specific block types
+4. Identify relationships between ideas to create hierarchical structure
+5. Match content patterns with the most appropriate BlockNote block types
+6. Pay special attention to formatting cues like "bullet points", "heading", "important", "quote", etc.
+7. Convert narrative descriptions into structured content ("make a list of..." → bulletListItem blocks)
+8. Break long monologues into logical paragraph blocks
+9. Detect if the user wants to create a new page
 
-SUPPORTED BLOCK TYPES:
-- "paragraph" - for general text content (default for most content)
-- "heading" - for titles and section headers (props must include "level": 1, 2, or 3)
-- "bulletListItem" - for unordered list items (implied by phrases like "bullet points:", "items:", etc.)
-- "numberedListItem" - for ordered list items (implied by "1.", "2.", "steps:", etc.)
-- "checkListItem" - for tasks or to-do items (props must include "checked": false, implied by "to-do:", "tasks:", "need to", etc.)
-- "quote" - for quoted speech or referenced content (implied by quotation marks or "quote:")
-- "code" - for code snippets or technical content (implied by technical terms or code-like formatting)
-- "pageLink" - for linking to a new page that will be created
+ALL SUPPORTED BLOCK TYPES:
+- "paragraph" - For general text content (default for most content)
+- "heading" - For titles and section headers (props must include "level": 1, 2, or 3)
+- "bulletListItem" - For unordered list items (phrases like "bullet points", "items", "list of", etc.)
+- "numberedListItem" - For ordered list items (phrases like "steps", "numbered list", "sequence", etc.)
+- "checkListItem" - For tasks or to-do items (props must include "checked": false, phrases like "task", "to-do", "checklist", etc.)
+- "quote" - For quoted speech or referenced content (phrases like "quote", text in quotation marks, etc.)
+- "code" - For code snippets or technical content (phrases like "code block", technical terms, etc.)
+- "pageLink" - For linking to a new page that will be created
+
+SPEECH PATTERN INTERPRETATION EXAMPLES:
+- "Make a heading that says..." → heading block with level 1
+- "Add a bullet point for..." → bulletListItem block
+- "This is important: [content]" → paragraph with emphasis styles or heading block
+- "Step one: [content]" → numberedListItem block
+- "Need to remember to [task]" → checkListItem block with checked: false
+- "As they said, quote, [content]" → quote block
+- "Code example: [content]" → code block
 
 NEW PAGE DETECTION:
 If the user mentions any of these phrases, they want to create a new page:
@@ -321,6 +333,7 @@ If the user mentions any of these phrases, they want to create a new page:
 - "make a new page"
 - "start a new page"
 - "create page"
+- "new page"
 
 When this is detected, output one pageLink block followed by content blocks:
 1. First block should be of type "pageLink" with these properties:
@@ -331,27 +344,21 @@ When this is detected, output one pageLink block followed by content blocks:
        "pageTitle": "Title of the new page", // Extract this from user's request
        "pageIcon": "📄" // Default icon
      },
-     "content": [
-       {
-         "type": "text",
-         "text": "Title of the new page",
-         "styles": {}
-       }
-     ],
+     "content": [], // Must be empty array for pageLink blocks
      "children": []
    }
 2. Following blocks should contain the content the user wants on the new page.
 3. Include a special property "createNewPage": true at the top level of your JSON response.
 
 RESPONSE REQUIREMENTS:
-1. ALWAYS output a valid JSON array of blocks with the EXACT structure shown above
+1. ALWAYS output valid JSON - either an array of blocks or an object with createNewPage and blocks fields
 2. DO NOT include explanations or markdown syntax in your response
 3. The JSON must be properly formatted with no extra characters
-4. For new page requests, the response should be a JSON object with "createNewPage": true and "blocks": [...array of blocks...]
+4. For new page requests, the response should be a JSON object with "createNewPage": true and "blocks": [...]
 
-EXAMPLES OF CONTEXT DETECTION:
+DETAILED EXAMPLES:
 
-Example 1 - Meeting notes with topic and points:
+Example 1 - Meeting notes with implicit sections:
 Input: "Meeting with marketing team discussed the new campaign launch for next month. Key points were budget approval by finance, creative assets ready by next week, and social media plan needs revision."
 Output: [
   {
@@ -454,6 +461,180 @@ Output: [
   }
 ]
 
+Example 2 - To-do list with implied tasks:
+Input: "Need to remember to send the report by Friday, schedule meeting with the client, and prepare the presentation slides."
+Output: [
+  {
+    "type": "heading",
+    "props": {
+      "level": 2,
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Tasks",
+        "styles": {}
+      }
+    ],
+    "children": []
+  },
+  {
+    "type": "checkListItem",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left",
+      "checked": false
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Send the report by Friday",
+        "styles": {}
+      }
+    ],
+    "children": []
+  },
+  {
+    "type": "checkListItem",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default", 
+      "textAlignment": "left",
+      "checked": false
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Schedule meeting with the client",
+        "styles": {}
+      }
+    ],
+    "children": []
+  },
+  {
+    "type": "checkListItem",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left",
+      "checked": false
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Prepare the presentation slides",
+        "styles": {}
+      }
+    ],
+    "children": []
+  }
+]
+
+Example 3 - Mixed content with a quoted reference:
+Input: "The project plan has three phases. Phase 1 is research, phase 2 is development, and phase 3 is testing. As the CEO said quote we need to prioritize quality over speed end quote. Remember to document each phase carefully."
+Output: [
+  {
+    "type": "paragraph",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "The project plan has three phases.",
+        "styles": {}
+      }
+    ],
+    "children": []
+  },
+  {
+    "type": "numberedListItem",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Research",
+        "styles": {}
+      }
+    ],
+    "children": []
+  },
+  {
+    "type": "numberedListItem",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Development",
+        "styles": {}
+      }
+    ],
+    "children": []
+  },
+  {
+    "type": "numberedListItem",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Testing",
+        "styles": {}
+      }
+    ],
+    "children": []
+  },
+  {
+    "type": "quote",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "We need to prioritize quality over speed",
+        "styles": {}
+      }
+    ],
+    "children": []
+  },
+  {
+    "type": "paragraph",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Remember to document each phase carefully.",
+        "styles": {}
+      }
+    ],
+    "children": []
+  }
+]
+
 Example 4 - Creating a new page:
 Input: "Create a new page called Project Timeline with details about the quarterly milestones and key deliverables for each month"
 Output: {
@@ -466,13 +647,7 @@ Output: {
         "pageTitle": "Project Timeline",
         "pageIcon": "📄"
       },
-      "content": [
-        {
-          "type": "text",
-          "text": "Project Timeline",
-          "styles": {}
-        }
-      ],
+      "content": [],
       "children": []
     },
     {
@@ -759,8 +934,371 @@ Output: {
   }
 };
 
+/**
+ * Process a voice command through Gemini API to identify action and target blocks
+ * @param {string} voiceCommand - The raw text transcription of the voice command
+ * @param {Array} editorContent - The current editor content with blocks
+ * @returns {Object} - Response containing action, targetBlockIds, and other necessary data
+ */
+export const processVoiceCommandWithGemini = async (
+  voiceCommand,
+  editorContent
+) => {
+  try {
+    // Validate input
+    if (!voiceCommand || typeof voiceCommand !== "string") {
+      console.error("Invalid voice command input");
+      return {
+        success: false,
+        action: "CLARIFICATION",
+        message: "Sorry, I couldn't understand your command.",
+      };
+    }
+
+    // Perform a quick pre-check for command words before calling the API
+    const commandWords = [
+      "delete",
+      "remove",
+      "create",
+      "make",
+      "new page",
+      "erase",
+    ];
+    const isLikelyCommand = commandWords.some((word) =>
+      voiceCommand.toLowerCase().includes(word)
+    );
+
+    // If no command words are present, treat it as simple text input
+    if (!isLikelyCommand) {
+      console.log("No command words detected - treating as simple text input");
+      return {
+        action: "INSERT_CONTENT",
+        content: voiceCommand,
+        success: true,
+        rawCommand: voiceCommand,
+      };
+    }
+
+    console.log("Processing voice command with Gemini:", voiceCommand);
+
+    // Pre-process the editor content to add block indices for easier reference
+    const processedContent = editorContent
+      ? editorContent.map((block, index) => ({
+          ...block,
+          _index: index, // Add index for reference in the prompt
+        }))
+      : [];
+
+    // Log content summary for debugging
+    console.log(`Editor has ${processedContent.length} blocks to analyze`);
+    if (processedContent.length > 0) {
+      const contentSummary = processedContent.map((block, idx) => {
+        // Extract first 20 chars of content for logging
+        const textContent =
+          block.content && block.content[0]
+            ? block.content[0].text.substring(0, 20) +
+              (block.content[0].text.length > 20 ? "..." : "")
+            : "[empty]";
+        return `Block ${idx}: ${block.type} - "${textContent}"`;
+      });
+      console.log("Content summary:", contentSummary);
+    }
+
+    // Create the prompt for Gemini that acts as a command router
+    const prompt = {
+      contents: [
+        {
+          role: "user", // First message acts as system instruction
+          parts: [
+            {
+              text: `You are a voice command interpreter for a block-based note editor. Your job is to analyze user voice commands and determine what actions to take in a VoiceNotion app.
+
+CONTEXT:
+The editor uses a block-based structure similar to Notion. Each block has the following structure:
+{
+  "id": "uniqueId123", // This might not be present in some blocks
+  "type": "paragraph", // or other block type like "heading", "bulletListItem", etc.
+  "props": { properties object },
+  "content": [ { text content objects } ],
+  "children": [] // nested blocks
+}
+
+Available block types include:
+- "paragraph" - For general text content
+- "heading" (level 1-3) - For titles and headers
+- "bulletListItem" - For unordered lists
+- "numberedListItem" - For ordered lists
+- "checkListItem" - For tasks (with checked: true/false)
+- "quote" - For quoted content
+- "code" - For code snippets
+- "pageLink" - For links to other pages
+
+USER INTENTS TO DETECT:
+1. INSERT/ADD content (create new blocks)
+2. DELETE/REMOVE blocks
+3. CREATE a new page
+4. Other actions (respond with CLARIFICATION)
+
+DEFAULT BEHAVIOR:
+When no clear command intent is detected, default to INSERT_CONTENT to add the text as normal content.
+
+PRECISE BLOCK IDENTIFICATION INSTRUCTIONS:
+For DELETE commands, you must determine the EXACT INDICES of blocks to delete:
+1. POSITION-BASED REFERENCES:
+   - "first/second/third/last paragraph/block/item" - Find by position
+   - "last 2 items" - Find the last n items of a specific type
+   - Convert these to 0-based indices (first item = index 0, second = index 1)
+
+2. CONTENT-BASED REFERENCES:
+   - "delete the paragraph about X" - Search for content containing keywords
+   - "remove the item with X" - Look for specific text within blocks
+
+3. TYPE-BASED REFERENCES:
+   - "delete all headings" - Identify all blocks of a specific type
+   - "remove bullet points" - Find all bulletListItems
+
+4. When a command references the "last" item of a certain type:
+   - Scan all blocks from last to first
+   - Find the last occurrence of the specified block type
+   - Include that block's index in targetBlockIds
+
+REQUIRED OUTPUT FORMAT:
+You must respond ONLY with a valid JSON object with this structure:
+
+For deletion commands:
+{
+  "action": "DELETE_BLOCK",
+  "targetBlockIds": [0, 2, 5],  // Array of indices for blocks to delete (0-based)
+  "success": true
+}
+
+For insertion commands (normal content addition):
+{
+  "action": "INSERT_CONTENT",
+  "content": "The text content to add",
+  "success": true
+}
+
+For create new page commands:
+{
+  "action": "CREATE_PAGE",
+  "pageTitle": "Title of the new page",
+  "pageContent": "Content for the new page",
+  "success": true
+}
+
+For ambiguous commands:
+{
+  "action": "CLARIFICATION",
+  "message": "I'm not sure what you want to do. Could you be more specific?",
+  "success": false
+}
+
+BLOCK ANALYSIS STEPS:
+1. Study the editor content carefully (all blocks in the editor)
+2. For each block, note its index, type, and content text
+3. For DELETE commands:
+   a. Look for position references (first, second, last, etc.)
+   b. Look for content references (block containing specific text)
+   c. Look for type references (all headings, bullet points, etc.)
+   d. Convert these references to array indices
+
+NEVER return an empty targetBlockIds array for DELETE_BLOCK actions. If you can't identify specific blocks to delete, use CLARIFICATION action instead.
+
+RELATIVE POSITION EXAMPLES:
+- "delete the first paragraph" → targetBlockIds: [0] (assuming first block is a paragraph)
+- "remove the last item" → target the index of the last block
+- "delete the second heading" → find the second occurrence of a heading block
+
+EXAMPLE COMMAND ANALYSIS:
+
+Example 1 - Delete a specific block:
+Input: "Delete the paragraph about meeting schedule"
+Editor Content: [
+  {type: "heading", content: [{text: "Project Plan"}]},
+  {type: "paragraph", content: [{text: "Team assignments for next quarter"}]},
+  {type: "paragraph", content: [{text: "Meeting schedule: Monday and Thursday"}]}
+]
+Output: {
+  "action": "DELETE_BLOCK",
+  "targetBlockIds": [2],  // The block containing "Meeting schedule"
+  "success": true
+}
+
+Example 2 - Delete the last item of a specific type:
+Input: "Delete the last bullet point"
+Editor Content: [
+  {type: "paragraph", content: [{text: "Today's agenda:"}]},
+  {type: "bulletListItem", content: [{text: "Review project status"}]},
+  {type: "bulletListItem", content: [{text: "Discuss budget"}]},
+  {type: "bulletListItem", content: [{text: "Plan next steps"}]},
+  {type: "paragraph", content: [{text: "Notes:"}]}
+]
+Output: {
+  "action": "DELETE_BLOCK",
+  "targetBlockIds": [3],  // The last bulletListItem (index 3)
+  "success": true
+}
+
+Example 3 - Simple text input (no command words):
+Input: "Today we discussed the marketing strategy for Q3"
+Output: {
+  "action": "INSERT_CONTENT",
+  "content": "Today we discussed the marketing strategy for Q3",
+  "success": true
+}
+
+DO NOT output any explanatory text or markdown. ONLY output the JSON object.`,
+            },
+          ],
+        },
+        {
+          role: "user", // Second user message with the actual content to process
+          parts: [
+            {
+              text: `Voice Command: "${voiceCommand}"
+              
+Editor Content: ${JSON.stringify(processedContent)}`,
+            },
+          ],
+        },
+      ],
+    };
+
+    // Make the API request
+    console.log(`Calling Gemini API for voice command processing`);
+    try {
+      const response = await axios.post(
+        `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
+        {
+          contents: prompt.contents,
+          generationConfig: {
+            ...GEMINI_CONFIG,
+            temperature: 0.0, // Keep deterministic for command interpretation
+          },
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      // Extract the response text from Gemini
+      const responseText = response.data.candidates[0]?.content?.parts[0]?.text;
+      console.log("Received response from Gemini API for voice command");
+
+      if (!responseText) {
+        console.error("Empty response from Gemini API");
+        // Default to INSERT_CONTENT for empty responses
+        return {
+          success: true,
+          action: "INSERT_CONTENT",
+          content: voiceCommand,
+          rawCommand: voiceCommand,
+        };
+      }
+
+      // Try to parse the response as JSON
+      try {
+        // Clean up the response if needed (similar to other function)
+        let jsonText = responseText.trim();
+
+        // Check if response is wrapped in markdown code block
+        if (jsonText.startsWith("```") && jsonText.endsWith("```")) {
+          // Extract content between code block markers
+          jsonText = jsonText
+            .substring(jsonText.indexOf("\n") + 1, jsonText.lastIndexOf("```"))
+            .trim();
+
+          // If it started with ```json, the first line needs to be removed
+          if (jsonText.startsWith("json")) {
+            jsonText = jsonText.substring(jsonText.indexOf("\n") + 1).trim();
+          }
+          console.log("Cleaned JSON text from code blocks");
+        }
+
+        // Check for any remaining non-JSON characters
+        const nonJsonMatch = jsonText.match(/^[^{\[]+([\[{].*)/);
+        if (nonJsonMatch && nonJsonMatch[1]) {
+          console.log("Found non-JSON prefix, cleaning...");
+          jsonText = nonJsonMatch[1];
+        }
+
+        console.log("Parsing voice command response as JSON");
+        const parsedResponse = JSON.parse(jsonText);
+
+        // Validate response has required fields
+        if (!parsedResponse.action) {
+          console.error("Invalid response format - missing action field");
+          // Default to INSERT_CONTENT for invalid responses
+          return {
+            success: true,
+            action: "INSERT_CONTENT",
+            content: voiceCommand,
+            rawCommand: voiceCommand,
+          };
+        }
+
+        // For DELETE_BLOCK actions, verify we have target blocks
+        if (parsedResponse.action === "DELETE_BLOCK") {
+          if (
+            !Array.isArray(parsedResponse.targetBlockIds) ||
+            parsedResponse.targetBlockIds.length === 0
+          ) {
+            console.warn(
+              "DELETE_BLOCK action received with empty targetBlockIds"
+            );
+            return {
+              success: false,
+              action: "CLARIFICATION",
+              message:
+                "I couldn't determine which block to delete. Please be more specific.",
+              rawCommand: voiceCommand,
+            };
+          }
+        }
+
+        // Return the parsed response
+        return {
+          ...parsedResponse,
+          rawCommand: voiceCommand, // Include original command for reference
+        };
+      } catch (parseError) {
+        console.error("Failed to parse Gemini response as JSON:", parseError);
+        // Default to INSERT_CONTENT for JSON parse errors
+        return {
+          success: true,
+          action: "INSERT_CONTENT",
+          content: voiceCommand,
+          rawCommand: voiceCommand,
+        };
+      }
+    } catch (error) {
+      console.error("Error calling Gemini API for voice command:", error);
+      // Default to INSERT_CONTENT for API errors
+      return {
+        success: true,
+        action: "INSERT_CONTENT",
+        content: voiceCommand,
+        rawCommand: voiceCommand,
+      };
+    }
+  } catch (error) {
+    console.error("Unexpected error in voice command processing:", error);
+    // Default to INSERT_CONTENT for unexpected errors
+    return {
+      success: true,
+      action: "INSERT_CONTENT",
+      content: voiceCommand,
+      rawCommand: voiceCommand,
+    };
+  }
+};
+
 export default {
   processTranscriptionWithGemini,
   validateBlockNoteFormat,
   processGeminiResponse,
+  processVoiceCommandWithGemini,
 };

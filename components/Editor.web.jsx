@@ -20,7 +20,7 @@ import TranscriptionHandler from "./editor-components/TranscriptionHandler";
 const BlockNoteEditorWeb = forwardRef((props, ref) => {
   // Create a ref to the BlockNoteEditor component
   const editorRef = useRef(null);
-  const { recentTranscription } = props;
+  const { recentTranscription, forceRefresh } = props;
 
   // Effect to handle new transcriptions
   useEffect(() => {
@@ -141,7 +141,12 @@ const BlockNoteEditorWeb = forwardRef((props, ref) => {
     },
   }));
 
-  return <BlockNoteEditor {...props} ref={editorRef} />;
+  // Generate a unique key to force re-render when content changes or when forceRefresh increments
+  const editorKey = `editor-${forceRefresh || 0}-${
+    recentTranscription ? Date.now() : 0
+  }`;
+
+  return <BlockNoteEditor {...props} ref={editorRef} key={editorKey} />;
 });
 
 export default BlockNoteEditorWeb;

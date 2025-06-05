@@ -19,6 +19,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import usePageStorage from "../../hooks/usePageStorage";
 import Editor from "../../components/Editor";
 import debounce from "lodash.debounce";
+import {
+  deleteBlocksFromStorage,
+  validateBlockFormat,
+} from "../../utils/blockOperations";
+import Toast from "react-native-toast-message";
+import geminiService from "../../services/geminiService";
 
 // Import our custom components
 import VoiceRecorder from "../../components/note/VoiceRecorder";
@@ -44,6 +50,97 @@ const createParagraphBlock = (text) => {
     ],
     children: [],
   };
+};
+
+/**
+ * Sanitize content to fix any malformed blocks, particularly pageLink blocks
+ * @param {Array} content - The content to sanitize
+ * @returns {Array} - The sanitized content
+ */
+const sanitizeContentBlocks = (content) => {
+  if (!Array.isArray(content)) {
+    console.error("Content is not an array");
+    return content;
+  }
+
+  // Create a deep copy to avoid mutating the original content
+  const sanitizedContent = JSON.parse(JSON.stringify(content));
+
+  // Sanitize each block
+  for (let i = 0; i < sanitizedContent.length; i++) {
+    const block = sanitizedContent[i];
+
+    // Fix pageLink blocks specifically
+    if (block.type === "pageLink") {
+      // PageLinkBlock uses content: "none", so we need to completely remove the content array
+      // Keep the props.pageId, props.pageTitle, and props.pageIcon
+      if (!block.props) {
+        block.props = {};
+      }
+
+      // Ensure required props exist
+      if (!block.props.pageId) {
+        // This is required - generate a random ID if missing
+        block.props.pageId = `page_${Math.random()
+          .toString(36)
+          .substring(2, 9)}`;
+      }
+
+      if (!block.props.pageTitle) {
+        block.props.pageTitle = "Untitled Page";
+      }
+
+      if (!block.props.pageIcon) {
+        block.props.pageIcon = "📄";
+      }
+
+      // BlockNote expects blocks with content: "none" to have empty content and children arrays
+      block.content = [];
+      block.children = [];
+    } else {
+      // For all other block types, ensure standard block properties
+      if (!Array.isArray(block.children)) {
+        block.children = [];
+      }
+
+      // Ensure proper content array
+      if (!Array.isArray(block.content)) {
+        block.content = [];
+      }
+
+      // Ensure each content item has required fields
+      if (block.content.length > 0) {
+        block.content.forEach((item) => {
+          item.type = item.type || "text";
+          item.text = item.text || "";
+          if (typeof item.styles !== "object") {
+            item.styles = {};
+          }
+        });
+      } else {
+        // Add default content if empty
+        block.content = [
+          {
+            type: "text",
+            text: "",
+            styles: {},
+          },
+        ];
+      }
+
+      // Ensure proper props
+      if (!block.props) {
+        block.props = {};
+      }
+
+      // For standard blocks, ensure standard props
+      if (!block.props.textColor) block.props.textColor = "default";
+      if (!block.props.backgroundColor) block.props.backgroundColor = "default";
+      if (!block.props.textAlignment) block.props.textAlignment = "left";
+    }
+  }
+
+  return sanitizedContent;
 };
 
 export default function NoteScreen() {
@@ -155,7 +252,11 @@ export default function NoteScreen() {
                     },
                   ];
 
-            setInitialContent(parsedContent);
+            // Sanitize content to fix any malformed blocks
+            const sanitizedContent = sanitizeContentBlocks(parsedContent);
+            console.log("Content sanitized for BlockNote compatibility");
+
+            setInitialContent(sanitizedContent);
           } catch (err) {
             console.error("Error parsing page content:", err);
             // Set fallback content on parse error
@@ -516,18 +617,54 @@ export default function NoteScreen() {
       let newBlocks = [];
 
       if (isRawText) {
-        // Legacy mode: create a single paragraph block with the raw text
-        newBlocks = [createParagraphBlock(transcriptionData)];
+        // Raw text mode - create a paragraph block with the raw text
+        if (typeof transcriptionData === "string") {
+          // Create a single paragraph block with the raw text
+          newBlocks = [createParagraphBlock(transcriptionData)];
+        } else {
+          console.warn(
+            "Expected string for raw text mode, got:",
+            typeof transcriptionData
+          );
+          return false;
+        }
       } else {
-        // New mode: use the structured blocks directly
-        newBlocks = transcriptionData;
+        // Block mode - use blocks directly
+        if (Array.isArray(transcriptionData)) {
+          // Multiple blocks passed as array
+          newBlocks = transcriptionData;
+        } else if (transcriptionData && typeof transcriptionData === "object") {
+          // Single block passed as object
+          newBlocks = [transcriptionData];
+        } else {
+          console.warn(
+            "Expected array or object for block mode, got:",
+            typeof transcriptionData
+          );
+          return false;
+        }
+      }
+
+      // Validate all blocks before inserting them
+      const invalidBlocks = newBlocks.filter(
+        (block) => !validateBlockFormat(block)
+      );
+      if (invalidBlocks.length > 0) {
+        console.error("Found invalid blocks:", invalidBlocks);
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Cannot add content with invalid format",
+          visibilityTime: 2000,
+        });
+        return false;
       }
 
       // Create a copy of current content with new blocks appended
       const updatedContent = [...currentContent, ...newBlocks];
 
       // Store the recent transcription (for UI feedback)
-      if (isRawText) {
+      if (isRawText && typeof transcriptionData === "string") {
         setRecentTranscription(transcriptionData);
       } else {
         // For structured blocks, just set something so the UI updates
@@ -567,8 +704,9 @@ export default function NoteScreen() {
         // Save the page without using the debounce
         setIsSaving(true);
         storageSavePage(updatedPage)
-          .then(() => {
+          .then((savedPage) => {
             setIsSaving(false);
+            setCurrentPage(savedPage);
 
             // Refresh the UI again after save
             setForceRefresh((prev) => prev + 1);
@@ -586,139 +724,486 @@ export default function NoteScreen() {
     }
   };
 
-  // Handle transcription completed from VoiceRecorder
-  // This uses the preferred approach for adding content: direct AsyncStorage update
-  // Rather than using BlockNote API methods directly, we update local state and persist to AsyncStorage
-  const handleTranscriptionComplete = async (transcriptionResult) => {
-    // Check if we received a valid result
-    if (!transcriptionResult) {
-      console.warn("Invalid transcription result received");
+  // Handle all voice commands with a unified approach
+  const handleVoiceCommandProcessed = async (commandResult) => {
+    if (!commandResult || !commandResult.action) {
+      console.warn("Invalid voice command result");
       return;
     }
 
-    console.log(
-      "Received transcription result:",
-      JSON.stringify(transcriptionResult, null, 2)
-    );
+    console.log("Voice command received:", commandResult.action);
 
-    // If we have successfully parsed blocks from Gemini
-    if (transcriptionResult.success) {
-      // Check specifically for createNewPage flag
+    try {
+      // Check if we're in a valid state to process commands
+      if (!currentPage || !currentPage.id) {
+        console.error("Invalid page state for command execution");
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Cannot process command - invalid page state",
+          visibilityTime: 2000,
+        });
+        return;
+      }
+
+      // Get the latest editor content to ensure we're working with current data
+      // This is critical for commands like DELETE that need to know which blocks exist
+      const currentEditorContent = editorContent || initialContent || [];
       console.log(
-        "Transcription success, createNewPage flag:",
-        !!transcriptionResult.createNewPage
+        `Current editor content has ${currentEditorContent.length} blocks`
       );
 
-      if (transcriptionResult.createNewPage) {
-        // Handle new page creation scenario
-        console.log(
-          "New page request detected:",
-          transcriptionResult.pageTitle
-        );
+      // For DELETE commands, we need to reprocess with the current content
+      if (commandResult.action === "DELETE_BLOCK") {
+        if (!currentEditorContent || currentEditorContent.length === 0) {
+          console.warn("Cannot execute delete command - no blocks in editor");
+          Toast.show({
+            type: "info",
+            text1: "No Content",
+            text2: "There are no blocks to delete",
+            visibilityTime: 2000,
+          });
+          return;
+        }
+
+        // Re-process the command with current content
+        if (commandResult.rawTranscription) {
+          console.log(
+            "Re-processing delete command with current editor content"
+          );
+          const reprocessedResult =
+            await geminiService.processVoiceCommandWithGemini(
+              commandResult.rawTranscription,
+              currentEditorContent
+            );
+
+          // Use the reprocessed result if it successfully identified blocks
+          if (
+            reprocessedResult.success &&
+            reprocessedResult.action === "DELETE_BLOCK" &&
+            Array.isArray(reprocessedResult.targetBlockIds) &&
+            reprocessedResult.targetBlockIds.length > 0
+          ) {
+            console.log(
+              "Successfully identified blocks to delete:",
+              reprocessedResult.targetBlockIds
+            );
+            commandResult = reprocessedResult;
+          }
+        }
+      }
+
+      // Handle different command actions based on the intent detected by Gemini
+      switch (commandResult.action) {
+        case "DELETE_BLOCK":
+          // Handle block deletion
+          await handleDeleteBlockCommand(commandResult);
+          break;
+
+        case "INSERT_CONTENT":
+          // Handle content insertion - the traditional transcription flow
+          await handleInsertContentCommand(commandResult);
+          break;
+
+        case "CREATE_PAGE":
+          // Handle new page creation
+          await handleCreatePageCommand(commandResult);
+          break;
+
+        case "CLARIFICATION":
+          // Display the clarification message to the user
+          Toast.show({
+            type: "info",
+            text1: "Command Unclear",
+            text2: commandResult.message || "Please be more specific",
+            visibilityTime: 3000,
+          });
+          break;
+
+        default:
+          console.warn(`Unknown command action: ${commandResult.action}`);
+          Toast.show({
+            type: "info",
+            text1: "Unknown Command",
+            text2: "This command type is not recognized",
+            visibilityTime: 2000,
+          });
+      }
+    } catch (error) {
+      console.error("Error processing voice command:", error);
+      Toast.show({
+        type: "error",
+        text1: "Command Error",
+        text2: "Failed to process your command",
+        visibilityTime: 2000,
+      });
+    }
+  };
+
+  // Handle DELETE_BLOCK command
+  const handleDeleteBlockCommand = async (commandResult) => {
+    // Check if we have target block IDs to delete
+    if (
+      !commandResult.targetBlockIds ||
+      !Array.isArray(commandResult.targetBlockIds) ||
+      commandResult.targetBlockIds.length === 0
+    ) {
+      console.warn("No target blocks specified for deletion");
+      Toast.show({
+        type: "info",
+        text1: "Command Unclear",
+        text2: "Please specify which block to delete",
+        visibilityTime: 2000,
+      });
+      return;
+    }
+
+    try {
+      // Set loading state
+      setIsSaving(true);
+
+      // Delete blocks from storage
+      const result = await deleteBlocksFromStorage(
+        currentPage,
+        commandResult.targetBlockIds,
+        storageSavePage
+      );
+
+      // Update local state with the new content
+      if (result && result.content) {
+        // Update both editor content and initial content to ensure consistency
+        setEditorContent(result.content);
+        setInitialContent(result.content);
+        setCurrentPage(result.page);
+
+        // Force refresh the editor to show changes - increment by more than 1 for stronger refresh
+        setForceRefresh((prev) => prev + 10);
+
+        // First try: Update editor content directly if possible
+        if (
+          editorRef.current &&
+          typeof editorRef.current.setContent === "function"
+        ) {
+          console.log("Updating editor content directly after deletion");
+          const success = editorRef.current.setContent(result.content);
+          console.log("Direct content update success:", success);
+
+          // Try focusing the editor to ensure refresh
+          setTimeout(() => {
+            if (typeof editorRef.current.focusEditor === "function") {
+              console.log("Focusing editor after deletion");
+              editorRef.current.focusEditor();
+            }
+          }, 50);
+        }
+
+        // Second backup approach: Try to force DOM update by manipulating the editor component
+        setTimeout(() => {
+          // Force another refresh after a short delay
+          setForceRefresh((prev) => prev + 1);
+
+          // Try updating content again after timeout
+          if (
+            editorRef.current &&
+            typeof editorRef.current.setContent === "function"
+          ) {
+            editorRef.current.setContent(result.content);
+
+            if (typeof editorRef.current.focusEditor === "function") {
+              editorRef.current.focusEditor();
+            }
+          }
+        }, 100);
+
+        // Show success message
+        Toast.show({
+          type: "success",
+          text1: "Success",
+          text2: `Deleted ${commandResult.targetBlockIds.length} block(s)`,
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Error executing delete command:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to delete block(s)",
+        visibilityTime: 2000,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle INSERT_CONTENT command
+  const handleInsertContentCommand = async (commandResult) => {
+    try {
+      const content = commandResult.content;
+      if (!content) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "No content provided to insert",
+          visibilityTime: 2000,
+        });
+        return;
+      }
+
+      // Set loading state to indicate processing
+      setIsSaving(true);
+
+      // Instead of directly inserting raw text, process it through Gemini to create structured blocks
+      try {
+        // Process the content through Gemini to create structured blocks based on context
+        const structuredResult =
+          await geminiService.processTranscriptionWithGemini(content);
+
+        console.log("Structured content result:", structuredResult.success);
+
+        let inserted = false;
+
+        if (structuredResult.success && structuredResult.blocks) {
+          // If Gemini successfully created structured blocks, insert them
+          inserted = await insertTranscriptionDirectly(
+            structuredResult.blocks,
+            false
+          );
+          console.log("Inserted structured blocks for content");
+        } else {
+          // Fall back to inserting raw text if structuring fails
+          inserted = await insertTranscriptionDirectly(content, true);
+          console.log("Fell back to inserting raw text");
+        }
+
+        if (inserted) {
+          Toast.show({
+            type: "success",
+            text1: "Success",
+            text2: "Content added",
+            visibilityTime: 2000,
+          });
+        } else {
+          Toast.show({
+            type: "error",
+            text1: "Error",
+            text2: "Failed to add content",
+            visibilityTime: 2000,
+          });
+        }
+      } catch (processingError) {
+        console.error("Error processing content structure:", processingError);
+
+        // Fall back to inserting as raw text if the processing fails
+        const inserted = await insertTranscriptionDirectly(content, true);
+
+        if (inserted) {
+          Toast.show({
+            type: "success",
+            text1: "Success",
+            text2: "Content added (as plain text)",
+            visibilityTime: 2000,
+          });
+        } else {
+          Toast.show({
+            type: "error",
+            text1: "Error",
+            text2: "Failed to add content",
+            visibilityTime: 2000,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error inserting content:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to add content",
+        visibilityTime: 2000,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle CREATE_PAGE command
+  const handleCreatePageCommand = async (commandResult) => {
+    try {
+      const { pageTitle, pageContent } = commandResult;
+
+      if (!pageTitle) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "No page title provided",
+          visibilityTime: 2000,
+        });
+        return;
+      }
+
+      // Save current page first
+      await handleSave();
+
+      // Create a new page
+      const newPage = await createNewPage(
+        currentPage.id, // Make it a child of current page
+        pageTitle,
+        "📄" // Default icon
+      );
+
+      if (!newPage || !newPage.id) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Failed to create new page",
+          visibilityTime: 2000,
+        });
+        return;
+      }
+
+      // Add page link to current page with FIXED CONTENT STRUCTURE
+      // PageLinkBlock expects content: "none", so create with empty content array
+      const pageLinkBlock = {
+        type: "pageLink",
+        props: {
+          pageId: newPage.id,
+          pageTitle: newPage.title,
+          pageIcon: newPage.icon,
+        },
+        content: [],
+        children: [],
+      };
+
+      // Insert page link into the current page
+      await insertTranscriptionDirectly(pageLinkBlock, false);
+
+      // If we have content for the new page, add it to the new page
+      if (pageContent) {
+        // Set a temporary loading state
+        setIsSaving(true);
 
         try {
-          // Save current page before creating a new one
-          await handleSave();
+          // Instead of directly creating a paragraph block, process the content through Gemini
+          // to create properly structured blocks based on the content's context
+          const structuredResult =
+            await geminiService.processTranscriptionWithGemini(pageContent);
 
-          // 1. Create the new page
-          const newPage = await createNewPage(
-            currentPage.id, // Use current page as parent
-            transcriptionResult.pageTitle || "New Page",
-            transcriptionResult.pageIcon || "📄"
+          console.log(
+            "Structured page content result:",
+            structuredResult.success
           );
 
-          if (!newPage || !newPage.id) {
-            console.error("Failed to create new page");
-            // Fallback - just add the transcription as text
-            insertTranscriptionDirectly(transcriptionResult.rawText, true);
-            return;
-          }
-
-          console.log("Created new page:", newPage.id, newPage.title);
-
-          // 2. First, create a page link in the current page
-          const pageLinkBlock = {
-            type: "pageLink",
+          // Create initial blocks for the new page with proper structure
+          const headingBlock = {
+            type: "heading",
             props: {
-              pageId: newPage.id,
-              pageTitle: newPage.title,
-              pageIcon: newPage.icon,
+              level: 1,
+              textColor: "default",
+              backgroundColor: "default",
+              textAlignment: "left",
             },
+            content: [
+              {
+                type: "text",
+                text: newPage.title,
+                styles: {},
+              },
+            ],
+            children: [],
           };
 
-          // 3. Insert the page link into the current page
-          const inserted = insertTranscriptionDirectly([pageLinkBlock], false);
+          // Determine what content blocks to use based on Gemini result
+          let contentBlocks = [];
 
-          if (!inserted) {
-            console.error("Failed to insert page link");
-            return;
+          if (structuredResult.success && structuredResult.blocks) {
+            // Use the structured blocks from Gemini
+            contentBlocks = structuredResult.blocks;
+            console.log("Using AI-structured content for new page");
+          } else {
+            // Fallback to simple paragraph if structuring failed
+            contentBlocks = [createParagraphBlock(pageContent)];
+            console.log("Using fallback paragraph for new page content");
           }
 
-          // 4. Remove the page link from the blocks that will go into the new page
-          const contentBlocks = transcriptionResult.blocks.slice(1);
+          // Combine heading with structured content blocks
+          const initialBlocks = [headingBlock, ...contentBlocks];
+          const contentJsonString = JSON.stringify(initialBlocks);
 
-          // 5. Save the content blocks to the new page
-          const contentJson = JSON.stringify(contentBlocks);
+          // Save directly to storage without using BlockNote API
           const updatedPage = {
             ...newPage,
-            contentJson,
+            contentJson: contentJsonString,
             updatedAt: Date.now(),
           };
 
-          const savedPage = await storageSavePage(updatedPage);
-          console.log("Saved content to new page:", savedPage.id);
-
-          // 6. Force a reload of nested pages to show the new page
-          await loadNestedPages();
-
-          // 7. Show success message
-          Alert.alert(
-            "Page Created",
-            `New page "${newPage.title}" created successfully. Would you like to navigate to it?`,
-            [
+          await storageSavePage(updatedPage);
+        } catch (err) {
+          console.error("Error processing page content:", err);
+          // Fallback to simple paragraph if processing fails
+          const headingBlock = {
+            type: "heading",
+            props: {
+              level: 1,
+              textColor: "default",
+              backgroundColor: "default",
+              textAlignment: "left",
+            },
+            content: [
               {
-                text: "Stay Here",
-                style: "cancel",
+                type: "text",
+                text: newPage.title,
+                styles: {},
               },
-              {
-                text: "Go to Page",
-                onPress: () => {
-                  // Navigate to the new page
-                  router.push(`/note/${newPage.id}`);
-                },
-              },
-            ]
-          );
-        } catch (error) {
-          console.error("Error handling new page creation:", error);
-          // Fallback to adding raw text
-          insertTranscriptionDirectly(transcriptionResult.rawText, true);
+            ],
+            children: [],
+          };
 
-          // Show error to user
-          Alert.alert(
-            "Error",
-            "Failed to create new page. The content has been added as text instead."
-          );
+          const contentBlock = createParagraphBlock(pageContent);
+          const initialBlocks = [headingBlock, contentBlock];
+          const contentJsonString = JSON.stringify(initialBlocks);
+
+          // Save the page with fallback content
+          const updatedPage = {
+            ...newPage,
+            contentJson: contentJsonString,
+            updatedAt: Date.now(),
+          };
+
+          await storageSavePage(updatedPage);
+        } finally {
+          setIsSaving(false);
         }
-      } else if (transcriptionResult.blocks) {
-        // Regular blocks processing
-        console.log(
-          "Using structured blocks:",
-          transcriptionResult.blocks.length
-        );
-        insertTranscriptionDirectly(transcriptionResult.blocks, false);
       }
-    } else {
-      // If unsuccessful or no blocks, use the raw text
-      console.log("Using raw text fallback:", transcriptionResult.rawText);
-      if (transcriptionResult.rawText) {
-        insertTranscriptionDirectly(transcriptionResult.rawText, true);
-      } else if (typeof transcriptionResult === "string") {
-        // Handle case where we directly receive a string (backward compatibility)
-        insertTranscriptionDirectly(transcriptionResult, true);
-      } else {
-        console.warn("No usable transcription content found");
-      }
+
+      // Reload nested pages to show the new page
+      await loadNestedPages();
+
+      // Show success message with navigation option
+      Alert.alert(
+        "Page Created",
+        `New page "${newPage.title}" created successfully. Would you like to navigate to it?`,
+        [
+          {
+            text: "Stay Here",
+            style: "cancel",
+          },
+          {
+            text: "Go to Page",
+            onPress: () => {
+              // Navigate to the new page
+              router.push(`/note/${newPage.id}`);
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error("Error creating new page:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to create new page",
+        visibilityTime: 2000,
+      });
     }
   };
 
@@ -809,6 +1294,7 @@ export default function NoteScreen() {
             onDeletePage={handleDeletePage}
             nestedPages={nestedPages}
             recentTranscription={recentTranscription}
+            forceRefresh={forceRefresh}
           />
         ) : (
           <View style={styles.loadingContainer}>
@@ -820,13 +1306,20 @@ export default function NoteScreen() {
         )}
       </KeyboardAvoidingView>
 
-      {/* Voice Recorder Component */}
-      <VoiceRecorder
-        onTranscriptionComplete={handleTranscriptionComplete}
-        theme={theme}
-        isKeyboardVisible={isKeyboardVisible}
-        keyboardHeight={keyboardHeight}
-      />
+      {/* Voice Recorder Component - Unified */}
+      {!isKeyboardVisible && (
+        <VoiceRecorder
+          onCommandProcessed={handleVoiceCommandProcessed}
+          editorContent={editorContent || initialContent || []}
+          theme={theme}
+          isKeyboardVisible={isKeyboardVisible}
+          keyboardHeight={keyboardHeight}
+          style={{ right: 16 }}
+        />
+      )}
+
+      {/* Toast message component */}
+      <Toast position="bottom" bottomOffset={80} />
     </View>
   );
 }
