@@ -10,7 +10,7 @@ import {
   Text,
   Pressable,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import geminiService from "../../services/geminiService";
@@ -37,11 +37,13 @@ const VoiceRecorder = ({
   const [commandState, setCommandState] = useState("idle"); // idle, recording, processing, success, error
   const [isAskAIMode, setIsAskAIMode] = useState(false); // New state for Ask AI mode
   const [longPressTimer, setLongPressTimer] = useState(null); // Timer for long press
+  const [showHint, setShowHint] = useState(true); // State to control hint visibility
 
   // Animation values
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const hintOpacity = useRef(new Animated.Value(1)).current;
 
   // Reset recording when component unmounts
   useEffect(() => {
@@ -116,6 +118,31 @@ const VoiceRecorder = ({
     }
   }, [isRecording, isProcessing]);
 
+  // Effect to handle hint animation and auto-hide
+  useEffect(() => {
+    if (showHint) {
+      // Fade in the hint
+      Animated.timing(hintOpacity, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
+
+      // Set a timeout to hide the hint after 5 seconds
+      const hintTimer = setTimeout(() => {
+        Animated.timing(hintOpacity, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }).start(() => {
+          setShowHint(false);
+        });
+      }, 5000);
+
+      return () => clearTimeout(hintTimer);
+    }
+  }, [showHint]);
+
   // Success animation function
   const animateSuccess = () => {
     setCommandState("success");
@@ -172,6 +199,8 @@ const VoiceRecorder = ({
   const handleLongPress = () => {
     console.log("Long press detected - activating Ask AI mode");
     setIsAskAIMode(true);
+    // Hide the hint when user successfully uses long press
+    setShowHint(false);
     handleVoiceRecordPress();
   };
 
@@ -557,7 +586,7 @@ const VoiceRecorder = ({
       // Different colors for Ask AI mode
       switch (commandState) {
         case "recording":
-          return "#9c27b0"; // Purple when recording in Ask AI mode
+          return "#7C4DFF"; // Deeper purple when recording in Ask AI mode
         case "processing":
           return "#673ab7"; // Deep purple when processing in Ask AI mode
         case "success":
@@ -565,7 +594,7 @@ const VoiceRecorder = ({
         case "error":
           return "#e74c3c"; // Red for error
         default:
-          return "#9c27b0"; // Purple when idle in Ask AI mode
+          return "#7C4DFF"; // Purple when idle in Ask AI mode
       }
     } else {
       // Original colors for normal mode
@@ -595,8 +624,33 @@ const VoiceRecorder = ({
         },
       ]}
     >
+      {/* Hint tooltip */}
+      {showHint && (
+        <Animated.View
+          style={[
+            styles.hintContainer,
+            {
+              opacity: hintOpacity,
+            },
+          ]}
+        >
+          <Text style={styles.hintText}>Long press to Ask AI</Text>
+        </Animated.View>
+      )}
+
       {isAskAIMode && isRecording && (
-        <View style={styles.askAIModeIndicator}>
+        <View
+          style={[
+            styles.askAIModeIndicator,
+            { backgroundColor: "rgba(124, 77, 255, 0.9)" },
+          ]}
+        >
+          <Ionicons
+            name="sparkles"
+            size={16}
+            color="white"
+            style={styles.askAIIcon}
+          />
           <Text style={styles.askAIModeText}>Listening for Question...</Text>
         </View>
       )}
@@ -609,30 +663,34 @@ const VoiceRecorder = ({
           {
             backgroundColor: getButtonColor(),
             bottom: isKeyboardVisible ? keyboardHeight + 16 : 16,
+            shadowColor: isAskAIMode ? "#7C4DFF" : "#000",
+            shadowOpacity: isAskAIMode ? 0.4 : 0.3,
           },
           style, // Apply custom styles
         ]}
         disabled={isProcessing}
       >
-        <Ionicons
-          name={
-            isAskAIMode
-              ? commandState === "recording"
-                ? "help-circle"
-                : "help"
-              : commandState === "recording"
-              ? "stop"
-              : commandState === "success"
-              ? "checkmark"
-              : commandState === "error"
-              ? "alert-circle"
-              : commandState === "processing"
-              ? "mic"
-              : "mic"
-          }
-          size={28}
-          color="white"
-        />
+        {isAskAIMode ? (
+          // AI mode icon - using sparkle icon instead of robot
+          <Ionicons name="sparkles" size={28} color="white" />
+        ) : (
+          // Regular voice mode icon
+          <Ionicons
+            name={
+              commandState === "recording"
+                ? "stop"
+                : commandState === "success"
+                ? "checkmark"
+                : commandState === "error"
+                ? "alert-circle"
+                : commandState === "processing"
+                ? "mic"
+                : "mic"
+            }
+            size={28}
+            color="white"
+          />
+        )}
         {isProcessing && (
           <View style={styles.processingIndicator}>
             <ActivityIndicator size="small" color="white" />
@@ -649,6 +707,7 @@ const styles = StyleSheet.create({
     right: 6,
     bottom: 60, // Add margin bottom to avoid phone navigation buttons
     zIndex: 100,
+    alignItems: "flex-end",
   },
   voiceButton: {
     width: 65,
@@ -659,7 +718,7 @@ const styles = StyleSheet.create({
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
-    shadowRadius: 3,
+    shadowRadius: 5,
     elevation: 5,
   },
   processingIndicator: {
@@ -675,9 +734,10 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 75,
     right: 0,
-    backgroundColor: "rgba(156, 39, 176, 0.9)",
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -685,10 +745,31 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 5,
   },
+  askAIIcon: {
+    marginRight: 6,
+  },
   askAIModeText: {
     color: "white",
     fontWeight: "bold",
+    fontSize: 13,
+  },
+  hintContainer: {
+    position: "absolute",
+    bottom: 85,
+    right: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    width: 150,
+    maxWidth: 200,
+  },
+  hintText: {
     fontSize: 12,
+    fontWeight: "400",
+    color: "#EEEEEE",
+    textAlign: "center",
+    letterSpacing: 0.3,
   },
 });
 
