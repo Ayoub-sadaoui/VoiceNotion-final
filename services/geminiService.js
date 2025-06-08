@@ -1372,9 +1372,172 @@ Editor Content: ${JSON.stringify(processedContent)}`,
   }
 };
 
+/**
+ * Process a user question through Gemini API and get an answer in BlockNote-compatible format
+ * @param {string} userQuestion - The user's question to answer
+ * @returns {Object} - Response containing BlockNote-compatible blocks as answer
+ */
+export const askGeminiAI = async (userQuestion) => {
+  try {
+    // Validate input
+    if (!userQuestion || typeof userQuestion !== "string") {
+      console.error("Invalid question input");
+      return {
+        success: false,
+        message: "Sorry, I couldn't understand your question.",
+      };
+    }
+
+    console.log("Processing AI question with Gemini:", userQuestion);
+
+    const prompt = {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `You are an AI assistant answering user questions. Format your response as BlockNote-compatible blocks that can be directly inserted into the editor.
+
+Your response should be a JSON array of blocks following this structure:
+[
+  {
+    "type": "paragraph|heading|bulletListItem|numberedListItem|quote|code",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left",
+      "level": 1 // Only for headings (1-3)
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Your content here",
+        "styles": {} // Can include "bold": true, "italic": true, "underline": true
+      }
+    ],
+    "children": []
+  }
+]
+
+For example, a simple answer might look like:
+[
+  {
+    "type": "heading",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left",
+      "level": 2
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Answer to your question",
+        "styles": {}
+      }
+    ],
+    "children": []
+  },
+  {
+    "type": "paragraph",
+    "props": {
+      "textColor": "default",
+      "backgroundColor": "default",
+      "textAlignment": "left"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Here is the detailed explanation...",
+        "styles": {}
+      }
+    ],
+    "children": []
+  }
+]
+
+User Question: ${userQuestion}
+
+Respond with ONLY the JSON array of blocks. Do not include any other text or explanation outside the JSON array.`,
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        ...GEMINI_CONFIG,
+        temperature: 0.2, // Slightly higher temperature for more natural answers
+        maxOutputTokens: 2048, // Allow longer answers
+      },
+    };
+
+    const apiUrl = `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`;
+    const response = await axios.post(apiUrl, prompt);
+
+    // Extract the response text
+    const responseText = response.data.candidates[0].content.parts[0].text;
+
+    // Try to parse the JSON response
+    try {
+      // Extract JSON array from the response if it contains other text
+      const jsonMatch = responseText.match(/\[\s*\{.*\}\s*\]/s);
+      const jsonText = jsonMatch ? jsonMatch[0] : responseText;
+
+      const blocks = JSON.parse(jsonText);
+
+      // Validate the blocks format
+      if (!validateBlockNoteFormat(blocks)) {
+        console.error("Invalid block format in AI answer");
+        return {
+          success: false,
+          message: "The AI response couldn't be formatted correctly.",
+          rawText: responseText,
+        };
+      }
+
+      return {
+        success: true,
+        action: "INSERT_AI_ANSWER",
+        blocks: blocks,
+        rawText: responseText,
+      };
+    } catch (parseError) {
+      console.error("Error parsing AI response:", parseError);
+      return {
+        success: false,
+        message: "Failed to parse the AI response.",
+        rawText: responseText,
+      };
+    }
+  } catch (error) {
+    console.error("Error asking Gemini AI:", error);
+
+    // Handle specific API errors
+    if (error?.response?.status === 404) {
+      return {
+        success: false,
+        message:
+          "Model not found - please check that the Gemini API is enabled in your Google Cloud Console",
+      };
+    }
+
+    if (error?.response?.status === 403) {
+      return {
+        success: false,
+        message: "API permission error - check API key permissions",
+      };
+    }
+
+    return {
+      success: false,
+      message: `API error: ${error.message || "Unknown error"}`,
+    };
+  }
+};
+
 export default {
   processTranscriptionWithGemini,
   validateBlockNoteFormat,
   processGeminiResponse,
   processVoiceCommandWithGemini,
+  askGeminiAI,
 };

@@ -1023,15 +1023,12 @@ export default function NoteScreen() {
       }
 
       // Get the latest editor content to ensure we're working with current data
-      // This is critical for commands like DELETE that need to know which blocks exist
-      const currentEditorContent = editorContent || initialContent || [];
-      console.log(
-        `Current editor content has ${currentEditorContent.length} blocks`
-      );
+      const latestContent = editorContent || initialContent || [];
+      console.log(`Current editor content has ${latestContent.length} blocks`);
 
       // For DELETE commands, we need to reprocess with the current content
       if (commandResult.action === "DELETE_BLOCK") {
-        if (!currentEditorContent || currentEditorContent.length === 0) {
+        if (!latestContent || latestContent.length === 0) {
           console.warn("Cannot execute delete command - no blocks in editor");
           Toast.show({
             type: "info",
@@ -1050,7 +1047,7 @@ export default function NoteScreen() {
           const reprocessedResult =
             await geminiService.processVoiceCommandWithGemini(
               commandResult.rawTranscription,
-              currentEditorContent
+              latestContent
             );
 
           // Use the reprocessed result if it successfully identified blocks
@@ -1069,20 +1066,76 @@ export default function NoteScreen() {
         }
       }
 
-      // Handle different command actions based on the intent detected by Gemini
+      // Handle different command types
       switch (commandResult.action) {
+        case "INSERT_AI_ANSWER":
+          // Handle AI answer insertion
+          if (commandResult.blocks && Array.isArray(commandResult.blocks)) {
+            console.log(
+              "Inserting AI answer blocks:",
+              commandResult.blocks.length
+            );
+
+            // Create a header block to indicate this is an AI answer
+            const headerBlock = {
+              type: "heading",
+              props: {
+                textColor: "default",
+                backgroundColor: "default",
+                textAlignment: "left",
+                level: 3,
+              },
+              content: [
+                {
+                  type: "text",
+                  text: "AI Answer",
+                  styles: {
+                    bold: true,
+                  },
+                },
+              ],
+              children: [],
+            };
+
+            // Insert the header followed by the AI-generated blocks
+            const blocksToInsert = [headerBlock, ...commandResult.blocks];
+            const success = insertTranscriptionDirectly(blocksToInsert, false);
+
+            if (success) {
+              Toast.show({
+                type: "success",
+                text1: "AI Answer Added",
+                text2: "The AI response has been added to your note",
+                visibilityTime: 2000,
+              });
+            } else {
+              Toast.show({
+                type: "error",
+                text1: "Error",
+                text2: "Failed to add AI answer to note",
+                visibilityTime: 2000,
+              });
+            }
+          } else {
+            console.error("Invalid AI answer format:", commandResult);
+            Toast.show({
+              type: "error",
+              text1: "Error",
+              text2: "The AI response was in an invalid format",
+              visibilityTime: 2000,
+            });
+          }
+          break;
+
         case "DELETE_BLOCK":
-          // Handle block deletion
           await handleDeleteBlockCommand(commandResult);
           break;
 
         case "INSERT_CONTENT":
-          // Handle content insertion - the traditional transcription flow
           await handleInsertContentCommand(commandResult);
           break;
 
         case "CREATE_PAGE":
-          // Handle new page creation
           await handleCreatePageCommand(commandResult);
           break;
 
