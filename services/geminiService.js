@@ -1161,13 +1161,36 @@ SPECIAL HANDLING FOR MULTI-BLOCK OPERATIONS:
 
 HANDLING CURRENT SELECTION:
 
-1. When the command refers to "this block", "current block", "selected block", or similar, set:
-   "useCurrentSelection": true
-   This indicates the app should use the block where the cursor is currently positioned.
+IMPORTANT: When the command refers to ANY of these phrases, ALWAYS set "useCurrentSelection": true
+- "this block"
+- "current block"
+- "selected block"
+- "the block"
+- "this paragraph"
+- "current paragraph"
+- "selected paragraph"
+- "the paragraph"
+- "this heading"
+- "current heading"
+- "selected heading"
+- "the heading"
+- "this"
+- "here"
+- "convert this"
+- "delete this"
+- "change this"
 
-2. When the command refers to "this text", "selected text", or similar, set:
-   "useCurrentSelection": true
-   "selectionType": "TEXT"
+Examples:
+- "convert this to heading" → set useCurrentSelection: true
+- "delete this block" → set useCurrentSelection: true
+- "make this bold" → set useCurrentSelection: true
+- "change this paragraph to a heading" → set useCurrentSelection: true
+
+For text selection within the current block:
+- "this text"
+- "selected text"
+- "current selection"
+Set both "useCurrentSelection": true AND "selectionType": "TEXT"
 
 HANDLING POSITIONAL REFERENCES:
 
