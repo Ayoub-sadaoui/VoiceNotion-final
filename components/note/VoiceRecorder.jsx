@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Text,
+  Pressable,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
@@ -33,6 +35,8 @@ const VoiceRecorder = ({
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [commandState, setCommandState] = useState("idle"); // idle, recording, processing, success, error
+  const [isAskAIMode, setIsAskAIMode] = useState(false); // New state for Ask AI mode
+  const [longPressTimer, setLongPressTimer] = useState(null); // Timer for long press
 
   // Animation values
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -50,8 +54,13 @@ const VoiceRecorder = ({
           console.error("Error cleaning up recording:", err);
         }
       }
+
+      // Clear any pending timers
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+      }
     };
-  }, [recording]);
+  }, [recording, longPressTimer]);
 
   // Animation effects based on command state
   useEffect(() => {
@@ -159,6 +168,30 @@ const VoiceRecorder = ({
     });
   };
 
+  // Handle long press to activate Ask AI mode
+  const handleLongPress = () => {
+    console.log("Long press detected - activating Ask AI mode");
+    setIsAskAIMode(true);
+    handleVoiceRecordPress();
+  };
+
+  // Handle press in to start timer for long press
+  const handlePressIn = () => {
+    // Set a timer for 1 second
+    const timer = setTimeout(() => {
+      handleLongPress();
+    }, 1000);
+    setLongPressTimer(timer);
+  };
+
+  // Handle press out to clear timer if released before long press threshold
+  const handlePressOut = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+  };
+
   // Handle voice record button press
   const handleVoiceRecordPress = async () => {
     try {
@@ -173,53 +206,72 @@ const VoiceRecorder = ({
           // Check if we have valid transcription text
           if (rawTranscription) {
             try {
-              // Process as a voice command using the unified approach
               console.log("Processing voice input:", rawTranscription);
 
-              // Log editor content information for debugging
-              if (editorContent && Array.isArray(editorContent)) {
-                console.log(
-                  `VoiceRecorder received ${editorContent.length} blocks to analyze`
+              if (isAskAIMode) {
+                // Process as an AI question
+                console.log("Processing in Ask AI mode");
+                const aiResponse = await geminiService.askGeminiAI(
+                  rawTranscription
                 );
-                if (editorContent.length > 0) {
-                  // Log a summary of blocks for debugging
-                  const contentSummary = editorContent
-                    .slice(0, 3)
-                    .map((block, idx) => {
-                      const blockText =
-                        block.content && block.content[0]
-                          ? block.content[0].text.substring(0, 20) +
-                            (block.content[0].text.length > 20 ? "..." : "")
-                          : "[empty]";
-                      return `${idx}: ${block.type} - "${blockText}"`;
-                    });
-                  console.log("Editor content sample:", contentSummary);
-                  if (editorContent.length > 3) {
-                    console.log(
-                      `...and ${editorContent.length - 3} more blocks`
-                    );
-                  }
+
+                // Reset Ask AI mode
+                setIsAskAIMode(false);
+
+                // Send the AI response to parent component
+                if (onCommandProcessed) {
+                  onCommandProcessed({
+                    ...aiResponse,
+                    rawTranscription,
+                  });
                 }
               } else {
-                console.warn(
-                  "VoiceRecorder received empty or invalid editor content"
-                );
-              }
+                // Process as a voice command using the unified approach
+                // Log editor content information for debugging
+                if (editorContent && Array.isArray(editorContent)) {
+                  console.log(
+                    `VoiceRecorder received ${editorContent.length} blocks to analyze`
+                  );
+                  if (editorContent.length > 0) {
+                    // Log a summary of blocks for debugging
+                    const contentSummary = editorContent
+                      .slice(0, 3)
+                      .map((block, idx) => {
+                        const blockText =
+                          block.content && block.content[0]
+                            ? block.content[0].text.substring(0, 20) +
+                              (block.content[0].text.length > 20 ? "..." : "")
+                            : "[empty]";
+                        return `${idx}: ${block.type} - "${blockText}"`;
+                      });
+                    console.log("Editor content sample:", contentSummary);
+                    if (editorContent.length > 3) {
+                      console.log(
+                        `...and ${editorContent.length - 3} more blocks`
+                      );
+                    }
+                  }
+                } else {
+                  console.warn(
+                    "VoiceRecorder received empty or invalid editor content"
+                  );
+                }
 
-              // Process with Gemini to determine intent and action
-              const commandResult =
-                await geminiService.processVoiceCommandWithGemini(
-                  rawTranscription,
-                  editorContent || []
-                );
-              console.log("Voice command processing result:", commandResult);
+                // Process with Gemini to determine intent and action
+                const commandResult =
+                  await geminiService.processVoiceCommandWithGemini(
+                    rawTranscription,
+                    editorContent || []
+                  );
+                console.log("Voice command processing result:", commandResult);
 
-              // Send the result to parent component
-              if (onCommandProcessed) {
-                onCommandProcessed({
-                  ...commandResult,
-                  rawTranscription,
-                });
+                // Send the result to parent component
+                if (onCommandProcessed) {
+                  onCommandProcessed({
+                    ...commandResult,
+                    rawTranscription,
+                  });
+                }
               }
             } catch (commandError) {
               console.error(
@@ -499,19 +551,36 @@ const VoiceRecorder = ({
     }
   };
 
-  // Get button color based on state
+  // Get button color based on state and mode
   const getButtonColor = () => {
-    switch (commandState) {
-      case "recording":
-        return "#ff6b6b"; // Red when recording
-      case "processing":
-        return "#f9a826"; // Orange when processing
-      case "success":
-        return "#2ecc71"; // Green for success
-      case "error":
-        return "#e74c3c"; // Red for error
-      default:
-        return "#3498db"; // Blue when idle (default)
+    if (isAskAIMode) {
+      // Different colors for Ask AI mode
+      switch (commandState) {
+        case "recording":
+          return "#9c27b0"; // Purple when recording in Ask AI mode
+        case "processing":
+          return "#673ab7"; // Deep purple when processing in Ask AI mode
+        case "success":
+          return "#2ecc71"; // Green for success
+        case "error":
+          return "#e74c3c"; // Red for error
+        default:
+          return "#9c27b0"; // Purple when idle in Ask AI mode
+      }
+    } else {
+      // Original colors for normal mode
+      switch (commandState) {
+        case "recording":
+          return "#ff6b6b"; // Red when recording
+        case "processing":
+          return "#f9a826"; // Orange when processing
+        case "success":
+          return "#2ecc71"; // Green for success
+        case "error":
+          return "#e74c3c"; // Red for error
+        default:
+          return "#3498db"; // Blue when idle (default)
+      }
     }
   };
 
@@ -526,9 +595,15 @@ const VoiceRecorder = ({
         },
       ]}
     >
-      <TouchableOpacity
-        activeOpacity={0.6}
+      {isAskAIMode && isRecording && (
+        <View style={styles.askAIModeIndicator}>
+          <Text style={styles.askAIModeText}>Listening for Question...</Text>
+        </View>
+      )}
+      <Pressable
         onPress={handleVoiceRecordPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
         style={[
           styles.voiceButton,
           {
@@ -541,7 +616,11 @@ const VoiceRecorder = ({
       >
         <Ionicons
           name={
-            commandState === "recording"
+            isAskAIMode
+              ? commandState === "recording"
+                ? "help-circle"
+                : "help"
+              : commandState === "recording"
               ? "stop"
               : commandState === "success"
               ? "checkmark"
@@ -559,7 +638,7 @@ const VoiceRecorder = ({
             <ActivityIndicator size="small" color="white" />
           </View>
         )}
-      </TouchableOpacity>
+      </Pressable>
     </Animated.View>
   );
 };
@@ -591,6 +670,25 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: "center",
     alignItems: "center",
+  },
+  askAIModeIndicator: {
+    position: "absolute",
+    bottom: 75,
+    right: 0,
+    backgroundColor: "rgba(156, 39, 176, 0.9)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  askAIModeText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 12,
   },
 });
 
