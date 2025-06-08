@@ -7,8 +7,10 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Text,
+  Pressable,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import geminiService from "../../services/geminiService";
@@ -33,11 +35,15 @@ const VoiceRecorder = ({
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [commandState, setCommandState] = useState("idle"); // idle, recording, processing, success, error
+  const [isAskAIMode, setIsAskAIMode] = useState(false); // New state for Ask AI mode
+  const [longPressTimer, setLongPressTimer] = useState(null); // Timer for long press
+  const [showHint, setShowHint] = useState(true); // State to control hint visibility
 
   // Animation values
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const hintOpacity = useRef(new Animated.Value(1)).current;
 
   // Reset recording when component unmounts
   useEffect(() => {
@@ -50,8 +56,13 @@ const VoiceRecorder = ({
           console.error("Error cleaning up recording:", err);
         }
       }
+
+      // Clear any pending timers
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+      }
     };
-  }, [recording]);
+  }, [recording, longPressTimer]);
 
   // Animation effects based on command state
   useEffect(() => {
@@ -107,6 +118,31 @@ const VoiceRecorder = ({
     }
   }, [isRecording, isProcessing]);
 
+  // Effect to handle hint animation and auto-hide
+  useEffect(() => {
+    if (showHint) {
+      // Fade in the hint
+      Animated.timing(hintOpacity, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
+
+      // Set a timeout to hide the hint after 5 seconds
+      const hintTimer = setTimeout(() => {
+        Animated.timing(hintOpacity, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }).start(() => {
+          setShowHint(false);
+        });
+      }, 5000);
+
+      return () => clearTimeout(hintTimer);
+    }
+  }, [showHint]);
+
   // Success animation function
   const animateSuccess = () => {
     setCommandState("success");
@@ -159,6 +195,32 @@ const VoiceRecorder = ({
     });
   };
 
+  // Handle long press to activate Ask AI mode
+  const handleLongPress = () => {
+    console.log("Long press detected - activating Ask AI mode");
+    setIsAskAIMode(true);
+    // Hide the hint when user successfully uses long press
+    setShowHint(false);
+    handleVoiceRecordPress();
+  };
+
+  // Handle press in to start timer for long press
+  const handlePressIn = () => {
+    // Set a timer for 1 second
+    const timer = setTimeout(() => {
+      handleLongPress();
+    }, 1000);
+    setLongPressTimer(timer);
+  };
+
+  // Handle press out to clear timer if released before long press threshold
+  const handlePressOut = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+  };
+
   // Handle voice record button press
   const handleVoiceRecordPress = async () => {
     try {
@@ -173,53 +235,72 @@ const VoiceRecorder = ({
           // Check if we have valid transcription text
           if (rawTranscription) {
             try {
-              // Process as a voice command using the unified approach
               console.log("Processing voice input:", rawTranscription);
 
-              // Log editor content information for debugging
-              if (editorContent && Array.isArray(editorContent)) {
-                console.log(
-                  `VoiceRecorder received ${editorContent.length} blocks to analyze`
+              if (isAskAIMode) {
+                // Process as an AI question
+                console.log("Processing in Ask AI mode");
+                const aiResponse = await geminiService.askGeminiAI(
+                  rawTranscription
                 );
-                if (editorContent.length > 0) {
-                  // Log a summary of blocks for debugging
-                  const contentSummary = editorContent
-                    .slice(0, 3)
-                    .map((block, idx) => {
-                      const blockText =
-                        block.content && block.content[0]
-                          ? block.content[0].text.substring(0, 20) +
-                            (block.content[0].text.length > 20 ? "..." : "")
-                          : "[empty]";
-                      return `${idx}: ${block.type} - "${blockText}"`;
-                    });
-                  console.log("Editor content sample:", contentSummary);
-                  if (editorContent.length > 3) {
-                    console.log(
-                      `...and ${editorContent.length - 3} more blocks`
-                    );
-                  }
+
+                // Reset Ask AI mode
+                setIsAskAIMode(false);
+
+                // Send the AI response to parent component
+                if (onCommandProcessed) {
+                  onCommandProcessed({
+                    ...aiResponse,
+                    rawTranscription,
+                  });
                 }
               } else {
-                console.warn(
-                  "VoiceRecorder received empty or invalid editor content"
-                );
-              }
+                // Process as a voice command using the unified approach
+                // Log editor content information for debugging
+                if (editorContent && Array.isArray(editorContent)) {
+                  console.log(
+                    `VoiceRecorder received ${editorContent.length} blocks to analyze`
+                  );
+                  if (editorContent.length > 0) {
+                    // Log a summary of blocks for debugging
+                    const contentSummary = editorContent
+                      .slice(0, 3)
+                      .map((block, idx) => {
+                        const blockText =
+                          block.content && block.content[0]
+                            ? block.content[0].text.substring(0, 20) +
+                              (block.content[0].text.length > 20 ? "..." : "")
+                            : "[empty]";
+                        return `${idx}: ${block.type} - "${blockText}"`;
+                      });
+                    console.log("Editor content sample:", contentSummary);
+                    if (editorContent.length > 3) {
+                      console.log(
+                        `...and ${editorContent.length - 3} more blocks`
+                      );
+                    }
+                  }
+                } else {
+                  console.warn(
+                    "VoiceRecorder received empty or invalid editor content"
+                  );
+                }
 
-              // Process with Gemini to determine intent and action
-              const commandResult =
-                await geminiService.processVoiceCommandWithGemini(
-                  rawTranscription,
-                  editorContent || []
-                );
-              console.log("Voice command processing result:", commandResult);
+                // Process with Gemini to determine intent and action
+                const commandResult =
+                  await geminiService.processVoiceCommandWithGemini(
+                    rawTranscription,
+                    editorContent || []
+                  );
+                console.log("Voice command processing result:", commandResult);
 
-              // Send the result to parent component
-              if (onCommandProcessed) {
-                onCommandProcessed({
-                  ...commandResult,
-                  rawTranscription,
-                });
+                // Send the result to parent component
+                if (onCommandProcessed) {
+                  onCommandProcessed({
+                    ...commandResult,
+                    rawTranscription,
+                  });
+                }
               }
             } catch (commandError) {
               console.error(
@@ -499,19 +580,36 @@ const VoiceRecorder = ({
     }
   };
 
-  // Get button color based on state
+  // Get button color based on state and mode
   const getButtonColor = () => {
-    switch (commandState) {
-      case "recording":
-        return "#ff6b6b"; // Red when recording
-      case "processing":
-        return "#f9a826"; // Orange when processing
-      case "success":
-        return "#2ecc71"; // Green for success
-      case "error":
-        return "#e74c3c"; // Red for error
-      default:
-        return "#3498db"; // Blue when idle (default)
+    if (isAskAIMode) {
+      // Different colors for Ask AI mode
+      switch (commandState) {
+        case "recording":
+          return "#7C4DFF"; // Deeper purple when recording in Ask AI mode
+        case "processing":
+          return "#673ab7"; // Deep purple when processing in Ask AI mode
+        case "success":
+          return "#2ecc71"; // Green for success
+        case "error":
+          return "#e74c3c"; // Red for error
+        default:
+          return "#7C4DFF"; // Purple when idle in Ask AI mode
+      }
+    } else {
+      // Original colors for normal mode
+      switch (commandState) {
+        case "recording":
+          return "#ff6b6b"; // Red when recording
+        case "processing":
+          return "#f9a826"; // Orange when processing
+        case "success":
+          return "#2ecc71"; // Green for success
+        case "error":
+          return "#e74c3c"; // Red for error
+        default:
+          return "#3498db"; // Blue when idle (default)
+      }
     }
   };
 
@@ -526,40 +624,79 @@ const VoiceRecorder = ({
         },
       ]}
     >
-      <TouchableOpacity
-        activeOpacity={0.6}
+      {/* Hint tooltip */}
+      {showHint && (
+        <Animated.View
+          style={[
+            styles.hintContainer,
+            {
+              opacity: hintOpacity,
+            },
+          ]}
+        >
+          <Text style={styles.hintText}>Long press to Ask AI</Text>
+        </Animated.View>
+      )}
+
+      {isAskAIMode && isRecording && (
+        <View
+          style={[
+            styles.askAIModeIndicator,
+            { backgroundColor: "rgba(124, 77, 255, 0.9)" },
+          ]}
+        >
+          <Ionicons
+            name="sparkles"
+            size={16}
+            color="white"
+            style={styles.askAIIcon}
+          />
+          <Text style={styles.askAIModeText}>Listening for Question...</Text>
+        </View>
+      )}
+      <Pressable
         onPress={handleVoiceRecordPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
         style={[
           styles.voiceButton,
           {
             backgroundColor: getButtonColor(),
             bottom: isKeyboardVisible ? keyboardHeight + 16 : 16,
+            shadowColor: isAskAIMode ? "#7C4DFF" : "#000",
+            shadowOpacity: isAskAIMode ? 0.4 : 0.3,
           },
           style, // Apply custom styles
         ]}
         disabled={isProcessing}
       >
-        <Ionicons
-          name={
-            commandState === "recording"
-              ? "stop"
-              : commandState === "success"
-              ? "checkmark"
-              : commandState === "error"
-              ? "alert-circle"
-              : commandState === "processing"
-              ? "mic"
-              : "mic"
-          }
-          size={28}
-          color="white"
-        />
+        {isAskAIMode ? (
+          // AI mode icon - using sparkle icon instead of robot
+          <Ionicons name="sparkles" size={28} color="white" />
+        ) : (
+          // Regular voice mode icon
+          <Ionicons
+            name={
+              commandState === "recording"
+                ? "stop"
+                : commandState === "success"
+                ? "checkmark"
+                : commandState === "error"
+                ? "alert-circle"
+                : commandState === "processing"
+                ? "mic"
+                : "mic"
+            }
+            size={28}
+            color="white"
+          />
+        )}
         {isProcessing && (
           <View style={styles.processingIndicator}>
             <ActivityIndicator size="small" color="white" />
           </View>
         )}
-      </TouchableOpacity>
+      </Pressable>
     </Animated.View>
   );
 };
@@ -570,6 +707,7 @@ const styles = StyleSheet.create({
     right: 6,
     bottom: 60, // Add margin bottom to avoid phone navigation buttons
     zIndex: 100,
+    alignItems: "flex-end",
   },
   voiceButton: {
     width: 65,
@@ -580,7 +718,7 @@ const styles = StyleSheet.create({
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
-    shadowRadius: 3,
+    shadowRadius: 5,
     elevation: 5,
   },
   processingIndicator: {
@@ -591,6 +729,47 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: "center",
     alignItems: "center",
+  },
+  askAIModeIndicator: {
+    position: "absolute",
+    bottom: 75,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  askAIIcon: {
+    marginRight: 6,
+  },
+  askAIModeText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 13,
+  },
+  hintContainer: {
+    position: "absolute",
+    bottom: 85,
+    right: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    width: 150,
+    maxWidth: 200,
+  },
+  hintText: {
+    fontSize: 12,
+    fontWeight: "400",
+    color: "#EEEEEE",
+    textAlign: "center",
+    letterSpacing: 0.3,
   },
 });
 
