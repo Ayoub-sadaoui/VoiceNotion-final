@@ -955,6 +955,227 @@ export const processVoiceCommandWithGemini = async (
       };
     }
 
+    // Special handling for AI answer deletion commands
+    const aiAnswerDeletePatterns = [
+      /delete\s+(?:the|this)?\s*ai\s+answer/i,
+      /remove\s+(?:the|this)?\s*ai\s+answer/i,
+      /clear\s+(?:the|this)?\s*ai\s+answer/i,
+      /erase\s+(?:the|this)?\s*ai\s+answer/i,
+    ];
+
+    // Check if the command is specifically about deleting an AI answer
+    const isAiAnswerDeleteCommand = aiAnswerDeletePatterns.some((pattern) =>
+      pattern.test(voiceCommand)
+    );
+
+    if (isAiAnswerDeleteCommand) {
+      console.log("Detected AI answer deletion command");
+
+      // Find AI Answer heading blocks and their content
+      const aiAnswerBlocks = [];
+      let foundAiAnswer = false;
+      let collectingAiAnswerBlocks = false;
+
+      // Look through all blocks to find AI Answer sections
+      editorContent.forEach((block, index) => {
+        // Check if this is an AI Answer heading
+        if (
+          block.type === "heading" &&
+          block.content &&
+          block.content.some(
+            (item) =>
+              item.type === "text" &&
+              item.text &&
+              item.text.includes("AI Answer")
+          )
+        ) {
+          foundAiAnswer = true;
+          collectingAiAnswerBlocks = true;
+          aiAnswerBlocks.push(block.id);
+        }
+        // If we're collecting AI answer blocks, add this block
+        else if (collectingAiAnswerBlocks) {
+          // If we encounter another heading, stop collecting
+          if (block.type === "heading") {
+            collectingAiAnswerBlocks = false;
+          } else {
+            aiAnswerBlocks.push(block.id);
+          }
+        }
+      });
+
+      if (foundAiAnswer && aiAnswerBlocks.length > 0) {
+        console.log(
+          `Found ${aiAnswerBlocks.length} AI answer blocks to delete:`,
+          aiAnswerBlocks
+        );
+        return {
+          success: true,
+          action: "DELETE_BLOCK",
+          targetBlockIds: aiAnswerBlocks,
+          rawCommand: voiceCommand,
+          rawTranscription: voiceCommand,
+        };
+      } else {
+        console.log("No AI answer blocks found to delete");
+        return {
+          success: false,
+          action: "CLARIFICATION",
+          message: "I couldn't find any AI answer blocks to delete.",
+          rawCommand: voiceCommand,
+        };
+      }
+    }
+
+    // Special handling for "delete last block/paragraph" commands with more precise matching
+    const deleteLastBlockPatterns = [
+      /delete\s+(?:the)?\s*last\s+block/i,
+      /remove\s+(?:the)?\s*last\s+block/i,
+      /erase\s+(?:the)?\s*last\s+block/i,
+    ];
+
+    const deleteLastParagraphPatterns = [
+      /delete\s+(?:the)?\s*last\s+paragraph/i,
+      /remove\s+(?:the)?\s*last\s+paragraph/i,
+      /erase\s+(?:the)?\s*last\s+paragraph/i,
+    ];
+
+    // Check if the command is specifically about deleting the last block
+    const isDeleteLastBlockCommand = deleteLastBlockPatterns.some((pattern) =>
+      pattern.test(voiceCommand)
+    );
+
+    // Check if the command is specifically about deleting the last paragraph
+    const isDeleteLastParagraphCommand = deleteLastParagraphPatterns.some(
+      (pattern) => pattern.test(voiceCommand)
+    );
+
+    if (
+      (isDeleteLastBlockCommand || isDeleteLastParagraphCommand) &&
+      editorContent &&
+      editorContent.length > 0
+    ) {
+      console.log(
+        `Detected delete last ${
+          isDeleteLastParagraphCommand ? "paragraph" : "block"
+        } command`
+      );
+
+      if (isDeleteLastParagraphCommand) {
+        // Find the last paragraph block
+        let lastParagraphIndex = -1;
+
+        // Search from the end to find the last paragraph
+        for (let i = editorContent.length - 1; i >= 0; i--) {
+          if (editorContent[i].type === "paragraph") {
+            lastParagraphIndex = i;
+            break;
+          }
+        }
+
+        if (lastParagraphIndex >= 0) {
+          const lastParagraph = editorContent[lastParagraphIndex];
+          console.log(
+            "Found last paragraph to delete with ID:",
+            lastParagraph.id
+          );
+          return {
+            success: true,
+            action: "DELETE_BLOCK",
+            targetBlockIds: [lastParagraph.id],
+            rawCommand: voiceCommand,
+            rawTranscription: voiceCommand,
+          };
+        } else {
+          console.log("No paragraph blocks found to delete");
+          return {
+            success: false,
+            action: "CLARIFICATION",
+            message: "I couldn't find any paragraph blocks to delete.",
+            rawCommand: voiceCommand,
+          };
+        }
+      } else {
+        // Get the last block's ID (any type)
+        const lastBlock = editorContent[editorContent.length - 1];
+
+        if (lastBlock && lastBlock.id) {
+          console.log("Found last block to delete with ID:", lastBlock.id);
+          return {
+            success: true,
+            action: "DELETE_BLOCK",
+            targetBlockIds: [lastBlock.id],
+            rawCommand: voiceCommand,
+            rawTranscription: voiceCommand,
+          };
+        }
+      }
+    }
+
+    // Special handling for "delete paragraph containing X" commands
+    const deleteParagraphWithContentPatterns = [
+      /delete\s+(?:the)?\s*paragraph\s+(?:that|which|with|containing)\s+(?:has|contains|says|saying|with|containing)\s+(.+)/i,
+      /remove\s+(?:the)?\s*paragraph\s+(?:that|which|with|containing)\s+(?:has|contains|says|saying|with|containing)\s+(.+)/i,
+      /erase\s+(?:the)?\s*paragraph\s+(?:that|which|with|containing)\s+(?:has|contains|says|saying|with|containing)\s+(.+)/i,
+    ];
+
+    // Check if the command is about deleting a paragraph with specific content
+    let contentToFind = null;
+    for (const pattern of deleteParagraphWithContentPatterns) {
+      const match = voiceCommand.match(pattern);
+      if (match && match[1]) {
+        contentToFind = match[1].trim();
+        break;
+      }
+    }
+
+    if (contentToFind && editorContent && editorContent.length > 0) {
+      console.log(
+        `Detected command to delete paragraph containing: "${contentToFind}"`
+      );
+
+      // Find blocks containing the specified content
+      const matchingBlockIds = [];
+
+      editorContent.forEach((block) => {
+        if (block.content && Array.isArray(block.content)) {
+          // Get the full text content of this block
+          const blockText = block.content
+            .filter((item) => item.type === "text")
+            .map((item) => item.text)
+            .join(" ")
+            .toLowerCase();
+
+          // Check if this block contains the content we're looking for
+          if (blockText.includes(contentToFind.toLowerCase())) {
+            matchingBlockIds.push(block.id);
+          }
+        }
+      });
+
+      if (matchingBlockIds.length > 0) {
+        console.log(
+          `Found ${matchingBlockIds.length} blocks containing "${contentToFind}":`,
+          matchingBlockIds
+        );
+        return {
+          success: true,
+          action: "DELETE_BLOCK",
+          targetBlockIds: matchingBlockIds,
+          rawCommand: voiceCommand,
+          rawTranscription: voiceCommand,
+        };
+      } else {
+        console.log(`No blocks found containing "${contentToFind}"`);
+        return {
+          success: false,
+          action: "CLARIFICATION",
+          message: `I couldn't find any paragraphs containing "${contentToFind}".`,
+          rawCommand: voiceCommand,
+        };
+      }
+    }
+
     // Perform a quick pre-check for command words before calling the API
     const commandWords = [
       // Existing command words
@@ -1375,9 +1596,10 @@ Editor Content: ${JSON.stringify(processedContent)}`,
 /**
  * Process a user question through Gemini API and get an answer in BlockNote-compatible format
  * @param {string} userQuestion - The user's question to answer
+ * @param {Array} pageContent - The current page content to provide as context
  * @returns {Object} - Response containing BlockNote-compatible blocks as answer
  */
-export const askGeminiAI = async (userQuestion) => {
+export const askGeminiAI = async (userQuestion, pageContent = []) => {
   try {
     // Validate input
     if (!userQuestion || typeof userQuestion !== "string") {
@@ -1390,13 +1612,90 @@ export const askGeminiAI = async (userQuestion) => {
 
     console.log("Processing AI question with Gemini:", userQuestion);
 
-    const prompt = {
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: `You are an AI assistant answering user questions. Format your response as BlockNote-compatible blocks that can be directly inserted into the editor.
+    // Extract text content from page blocks for context
+    let pageTextContent = "";
+    if (Array.isArray(pageContent) && pageContent.length > 0) {
+      // Function to extract text from a block and its children recursively
+      const extractTextFromBlock = (block) => {
+        let text = "";
+
+        // Extract text from content array
+        if (block.content && Array.isArray(block.content)) {
+          block.content.forEach((item) => {
+            if (item.type === "text" && item.text) {
+              text += item.text + " ";
+            }
+          });
+        }
+
+        // Extract text from children blocks recursively
+        if (block.children && Array.isArray(block.children)) {
+          block.children.forEach((child) => {
+            text += extractTextFromBlock(child) + " ";
+          });
+        }
+
+        return text;
+      };
+
+      // Process all blocks
+      pageTextContent = pageContent
+        .map((block) => extractTextFromBlock(block))
+        .join("\n");
+      console.log(
+        "Providing page context to AI:",
+        pageTextContent.substring(0, 100) + "..."
+      );
+    }
+
+    // Detect specific AI operations
+    const isSummarizeRequest =
+      /^(?:summarize|summary|summarization|sum up|recap)\b/i.test(userQuestion);
+    const isAutocompleteRequest =
+      /^(?:complete|autocomplete|continue|finish)\b/i.test(userQuestion);
+    const isRewriteRequest = /^(?:rewrite|rephrase|reword|paraphrase)\b/i.test(
+      userQuestion
+    );
+
+    // Build the appropriate prompt based on the request type
+    let promptText = "";
+
+    if (isSummarizeRequest) {
+      promptText = `You are an AI assistant that summarizes content. Format your response as BlockNote-compatible blocks that can be directly inserted into the editor.
+
+Your task is to summarize the following content:
+${pageTextContent}
+
+Create a concise summary using the BlockNote format described below. Focus on the key points and main ideas.`;
+    } else if (isAutocompleteRequest) {
+      promptText = `You are an AI assistant that completes or continues text. Format your response as BlockNote-compatible blocks that can be directly inserted into the editor.
+
+Here is the content to continue or complete:
+${pageTextContent}
+
+Continue this content in a natural way that matches the style, tone, and context. Use the BlockNote format described below.`;
+    } else if (isRewriteRequest) {
+      promptText = `You are an AI assistant that rewrites or rephrases content. Format your response as BlockNote-compatible blocks that can be directly inserted into the editor.
+
+Here is the content to rewrite:
+${pageTextContent}
+
+Rewrite this content while preserving its meaning, but improving clarity, flow, and style. Use the BlockNote format described below.`;
+    } else {
+      // General question answering with context
+      promptText = `You are an AI assistant answering user questions. Format your response as BlockNote-compatible blocks that can be directly inserted into the editor.
+
+User Question: ${userQuestion}
+
+${
+  pageTextContent
+    ? `Context from the current page:\n${pageTextContent}\n\nAnswer the question based on this context when relevant.`
+    : ""
+}`;
+    }
+
+    // Add BlockNote format instructions
+    promptText += `
 
 Your response should be a JSON array of blocks following this structure:
 [
@@ -1456,9 +1755,15 @@ For example, a simple answer might look like:
   }
 ]
 
-User Question: ${userQuestion}
+Respond with ONLY the JSON array of blocks. Do not include any other text or explanation outside the JSON array.`;
 
-Respond with ONLY the JSON array of blocks. Do not include any other text or explanation outside the JSON array.`,
+    const prompt = {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: promptText,
             },
           ],
         },
@@ -1494,9 +1799,19 @@ Respond with ONLY the JSON array of blocks. Do not include any other text or exp
         };
       }
 
+      // Create an appropriate action type based on the request
+      let actionType = "INSERT_AI_ANSWER";
+      if (isSummarizeRequest) {
+        actionType = "INSERT_AI_SUMMARY";
+      } else if (isAutocompleteRequest) {
+        actionType = "INSERT_AI_COMPLETION";
+      } else if (isRewriteRequest) {
+        actionType = "INSERT_AI_REWRITE";
+      }
+
       return {
         success: true,
-        action: "INSERT_AI_ANSWER",
+        action: actionType,
         blocks: blocks,
         rawText: responseText,
       };

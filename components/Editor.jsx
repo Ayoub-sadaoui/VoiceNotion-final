@@ -85,6 +85,28 @@ const Editor = forwardRef((props, ref) => {
       return false;
     },
 
+    // Get the currently focused block ID
+    getCurrentBlockId: () => {
+      if (
+        editorRef.current &&
+        typeof editorRef.current.getCurrentBlockId === "function"
+      ) {
+        return editorRef.current.getCurrentBlockId();
+      }
+      return null;
+    },
+
+    // Set content directly - for use with voice commands
+    setContent: (content) => {
+      if (
+        editorRef.current &&
+        typeof editorRef.current.setContent === "function"
+      ) {
+        return editorRef.current.setContent(content);
+      }
+      return false;
+    },
+
     // DEPRECATED: This method is kept for API compatibility only
     // Use the direct AsyncStorage approach in note/[id].jsx instead
     // via insertTranscriptionDirectly() function
