@@ -59,7 +59,7 @@ export default function ProfileScreen() {
       id: "about",
       icon: "information-circle-outline",
       title: "About",
-      screen: "about",
+      screen: "/profile/about",
     },
   ];
 
@@ -88,9 +88,7 @@ export default function ProfileScreen() {
             <TouchableOpacity
               key={item.id}
               style={[styles.settingsItem, { borderBottomColor: theme.border }]}
-              onPress={() =>
-                item.screen && router.push(`/profile/${item.screen}`)
-              }
+              onPress={() => item.screen && router.push(item.screen)}
             >
               <Ionicons name={item.icon} size={22} color={theme.icon} />
               <Text style={[styles.settingsItemText, { color: theme.text }]}>

@@ -740,7 +740,7 @@ const styles = StyleSheet.create({
   buttonContainer: {
     position: "absolute",
     right: 6,
-    bottom: 60, // Add margin bottom to avoid phone navigation buttons
+    bottom: 16, // Changed from 60 to 16 since we'll handle safe area in the component itself
     zIndex: 100,
     alignItems: "flex-end",
   },

@@ -2,9 +2,11 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../utils/themeContext";
 import { Platform, View, StyleSheet, Text } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const renderTabIcon = (name, color, focused) => {
     const iconName = focused ? name : `${name}-outline`;
@@ -30,8 +32,10 @@ export default function TabLayout() {
           borderTopColor: theme.border,
           borderTopWidth: 1,
           paddingVertical: 10,
-          height: Platform.OS === "ios" ? 130 : 110,
-          paddingBottom: Platform.OS === "ios" ? 65 : 50,
+          height:
+            Platform.OS === "ios" ? 80 + insets.bottom : 60 + insets.bottom,
+          paddingBottom:
+            Platform.OS === "ios" ? 30 + insets.bottom : 10 + insets.bottom,
         },
         tabBarLabelStyle: {
           fontSize: 12,

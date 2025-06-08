@@ -544,22 +544,35 @@ export default function HomeScreen() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
     >
-      <View style={styles.headerRightContainer}>
-        <TouchableOpacity
-          onPress={onRefresh}
-          style={styles.headerButton}
-          activeOpacity={0.7}
-        >
-          <Feather name="refresh-cw" size={20} color={theme.text} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push("/(tabs)/search")}
-          style={styles.headerButton}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="search-outline" size={22} color={theme.text} />
-        </TouchableOpacity>
-      </View>
+      {/* Screen Header with Profile Pic and Greeting */}
+      <ScreenHeader
+        title={
+          <View style={styles.greetingContainer}>
+            <TouchableOpacity
+              style={[
+                styles.profileIconContainer,
+                { backgroundColor: theme.primary },
+              ]}
+              onPress={() => router.push("/(tabs)/profile")}
+            >
+              <Ionicons name="person" size={18} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={[styles.greetingText, { color: theme.text }]}>
+              {getGreeting()},{" "}
+              <Text style={{ fontWeight: "600" }}>VoiceNotion</Text>
+            </Text>
+          </View>
+        }
+        rightElement={
+          <TouchableOpacity
+            onPress={onRefresh}
+            style={styles.headerButton}
+            activeOpacity={0.7}
+          >
+            <Feather name="refresh-cw" size={20} color={theme.text} />
+          </TouchableOpacity>
+        }
+      />
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -639,6 +652,14 @@ export default function HomeScreen() {
   );
 }
 
+// Get appropriate greeting based on time of day
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -646,6 +667,22 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     marginLeft: 8,
+  },
+  greetingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  profileIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  greetingText: {
+    fontSize: 16,
+    fontWeight: "400",
   },
   headerRightContainer: {
     flexDirection: "row",
@@ -663,6 +700,7 @@ const styles = StyleSheet.create({
   // Recent pages section
   recentPagesSection: {
     paddingTop: 12,
+    paddingHorizontal: 16,
     paddingBottom: 16,
   },
   recentPagesContainer: {

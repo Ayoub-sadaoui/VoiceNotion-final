@@ -913,7 +913,35 @@ export default function NoteScreen() {
   const handleIconChange = (newIcon) => {
     setIcon(newIcon);
     if (currentPage) {
-      debouncedSave(editorContent || initialContent);
+      // Create an updated page with the new icon
+      const updatedPage = {
+        ...currentPage,
+        icon: newIcon,
+        updatedAt: Date.now(),
+      };
+
+      // Save the updated page immediately to ensure icon changes are persisted
+      setIsSaving(true);
+      storageSavePage(updatedPage)
+        .then((savedPage) => {
+          setCurrentPage(savedPage);
+          Toast.show({
+            type: "success",
+            text1: "Icon updated",
+            visibilityTime: 1500,
+          });
+        })
+        .catch((err) => {
+          console.error("Error saving icon:", err);
+          Toast.show({
+            type: "error",
+            text1: "Failed to save icon",
+            visibilityTime: 2000,
+          });
+        })
+        .finally(() => {
+          setIsSaving(false);
+        });
     }
   };
 
@@ -2864,7 +2892,10 @@ export default function NoteScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.background }]}
+      edges={["bottom"]}
+    >
       <Stack.Screen
         options={{
           headerShown: false,
@@ -2933,13 +2964,13 @@ export default function NoteScreen() {
           theme={theme}
           isKeyboardVisible={isKeyboardVisible}
           keyboardHeight={keyboardHeight}
-          style={{ right: 16 }}
+          style={{ right: 16, bottom: insets.bottom > 0 ? insets.bottom : 16 }}
         />
       )}
 
       {/* Toast message component */}
-      <Toast position="bottom" bottomOffset={80} />
-    </View>
+      <Toast position="bottom" bottomOffset={80 + insets.bottom} />
+    </SafeAreaView>
   );
 }
 
