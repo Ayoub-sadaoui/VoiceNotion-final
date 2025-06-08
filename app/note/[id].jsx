@@ -283,6 +283,14 @@ export default function NoteScreen() {
   const [forceRefresh, setForceRefresh] = useState(0);
   const [recentTranscription, setRecentTranscription] = useState(null);
 
+  // History stacks for undo/redo functionality
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [isUndoRedoOperation, setIsUndoRedoOperation] = useState(false);
+  const lastContentRef = useRef(null);
+
   // Listen for keyboard events
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
@@ -554,7 +562,7 @@ export default function NoteScreen() {
     [currentPage, storageSavePage, title, icon]
   );
 
-  // Handle content change from editor
+  // Handle content change from editor with history tracking
   const handleEditorContentChange = useCallback(
     (content) => {
       if (!content) {
@@ -565,11 +573,279 @@ export default function NoteScreen() {
       // Always update our local state to stay in sync with the editor
       setEditorContent(content);
 
+      // Skip history tracking for undo/redo operations
+      if (!isUndoRedoOperation) {
+        // Save the previous state to the undo stack if it exists and is different
+        if (
+          lastContentRef.current &&
+          JSON.stringify(lastContentRef.current) !== JSON.stringify(content)
+        ) {
+          setUndoStack((prevStack) => {
+            // Limit stack size to prevent memory issues
+            const newStack = [...prevStack, lastContentRef.current].slice(-50);
+            return newStack;
+          });
+
+          // Clear redo stack when new changes are made
+          if (redoStack.length > 0) {
+            setRedoStack([]);
+          }
+        }
+      }
+
+      // Update the last content reference
+      lastContentRef.current = JSON.parse(JSON.stringify(content));
+
+      // Reset the undo/redo operation flag
+      if (isUndoRedoOperation) {
+        setIsUndoRedoOperation(false);
+      }
+
       // Debounce the saving to avoid too many writes
       debouncedSave(content);
     },
-    [debouncedSave]
+    [debouncedSave, isUndoRedoOperation, redoStack.length]
   );
+
+  // Update canUndo and canRedo when stacks change
+  useEffect(() => {
+    setCanUndo(undoStack.length > 0);
+  }, [undoStack]);
+
+  useEffect(() => {
+    setCanRedo(redoStack.length > 0);
+  }, [redoStack]);
+
+  // Initialize lastContentRef when content is loaded
+  useEffect(() => {
+    if (initialContent && !lastContentRef.current) {
+      lastContentRef.current = JSON.parse(JSON.stringify(initialContent));
+    }
+  }, [initialContent]);
+
+  // Handle undo button press - use local storage approach
+  const handleUndo = async () => {
+    try {
+      console.log("Handling undo with local storage approach");
+
+      if (undoStack.length === 0) {
+        console.log("No undo history available");
+        Toast.show({
+          type: "info",
+          text1: "Cannot Undo",
+          text2: "No more actions to undo",
+          visibilityTime: 2000,
+        });
+        return;
+      }
+
+      // Set the flag to prevent adding to history during this operation
+      setIsUndoRedoOperation(true);
+
+      // Get the last state from the undo stack
+      const prevStack = [...undoStack];
+      const prevState = prevStack.pop();
+      setUndoStack(prevStack);
+
+      // Add current state to redo stack
+      if (editorContent) {
+        setRedoStack((prevRedoStack) => [...prevRedoStack, editorContent]);
+      }
+
+      // Update editor content with the previous state
+      setEditorContent(prevState);
+      setInitialContent(prevState);
+
+      // Update the last content reference
+      lastContentRef.current = JSON.parse(JSON.stringify(prevState));
+
+      // Save to storage
+      if (currentPage) {
+        const contentJsonString = JSON.stringify(prevState);
+        const updatedPage = {
+          ...currentPage,
+          contentJson: contentJsonString,
+          updatedAt: Date.now(),
+        };
+
+        const savedPage = await storageSavePage(updatedPage);
+        setCurrentPage(savedPage);
+
+        // Force refresh the editor
+        setForceRefresh((prev) => prev + 10);
+
+        // Try to update the editor content directly if possible
+        if (
+          editorRef.current &&
+          typeof editorRef.current.setContent === "function"
+        ) {
+          editorRef.current.setContent(prevState);
+        }
+
+        Toast.show({
+          type: "success",
+          text1: "Success",
+          text2: "Undid last change",
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Error performing undo:", error);
+      Toast.show({
+        type: "error",
+        text1: "Undo Error",
+        text2: "Failed to undo",
+        visibilityTime: 2000,
+      });
+      setIsUndoRedoOperation(false);
+    }
+  };
+
+  // Handle redo button press - use local storage approach
+  const handleRedo = async () => {
+    try {
+      console.log("Handling redo with local storage approach");
+
+      if (redoStack.length === 0) {
+        console.log("No redo history available");
+        Toast.show({
+          type: "info",
+          text1: "Cannot Redo",
+          text2: "No more actions to redo",
+          visibilityTime: 2000,
+        });
+        return;
+      }
+
+      // Set the flag to prevent adding to history during this operation
+      setIsUndoRedoOperation(true);
+
+      // Get the last state from the redo stack
+      const prevRedoStack = [...redoStack];
+      const nextState = prevRedoStack.pop();
+      setRedoStack(prevRedoStack);
+
+      // Add current state to undo stack
+      if (editorContent) {
+        setUndoStack((prevUndoStack) => [...prevUndoStack, editorContent]);
+      }
+
+      // Update editor content with the next state
+      setEditorContent(nextState);
+      setInitialContent(nextState);
+
+      // Update the last content reference
+      lastContentRef.current = JSON.parse(JSON.stringify(nextState));
+
+      // Save to storage
+      if (currentPage) {
+        const contentJsonString = JSON.stringify(nextState);
+        const updatedPage = {
+          ...currentPage,
+          contentJson: contentJsonString,
+          updatedAt: Date.now(),
+        };
+
+        const savedPage = await storageSavePage(updatedPage);
+        setCurrentPage(savedPage);
+
+        // Force refresh the editor
+        setForceRefresh((prev) => prev + 10);
+
+        // Try to update the editor content directly if possible
+        if (
+          editorRef.current &&
+          typeof editorRef.current.setContent === "function"
+        ) {
+          editorRef.current.setContent(nextState);
+        }
+
+        Toast.show({
+          type: "success",
+          text1: "Success",
+          text2: "Redid last undone change",
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Error performing redo:", error);
+      Toast.show({
+        type: "error",
+        text1: "Redo Error",
+        text2: "Failed to redo",
+        visibilityTime: 2000,
+      });
+      setIsUndoRedoOperation(false);
+    }
+  };
+
+  // Handle UNDO command from voice
+  const handleUndoCommand = async (commandResult) => {
+    try {
+      // Get the number of steps to undo (default to 1)
+      const steps = commandResult.steps || 1;
+
+      // Perform undo operations for the specified number of steps
+      for (let i = 0; i < steps; i++) {
+        if (undoStack.length > 0) {
+          await handleUndo();
+        } else {
+          break;
+        }
+      }
+
+      if (undoStack.length === 0 && steps > 0) {
+        Toast.show({
+          type: "info",
+          text1: "Cannot Undo",
+          text2: "No more actions to undo",
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Error performing undo command:", error);
+      Toast.show({
+        type: "error",
+        text1: "Undo Error",
+        text2: "Failed to undo",
+        visibilityTime: 2000,
+      });
+    }
+  };
+
+  // Handle REDO command from voice
+  const handleRedoCommand = async (commandResult) => {
+    try {
+      // Get the number of steps to redo (default to 1)
+      const steps = commandResult.steps || 1;
+
+      // Perform redo operations for the specified number of steps
+      for (let i = 0; i < steps; i++) {
+        if (redoStack.length > 0) {
+          await handleRedo();
+        } else {
+          break;
+        }
+      }
+
+      if (redoStack.length === 0 && steps > 0) {
+        Toast.show({
+          type: "info",
+          text1: "Cannot Redo",
+          text2: "No more actions to redo",
+          visibilityTime: 2000,
+        });
+      }
+    } catch (error) {
+      console.error("Error performing redo command:", error);
+      Toast.show({
+        type: "error",
+        text1: "Redo Error",
+        text2: "Failed to redo",
+        visibilityTime: 2000,
+      });
+    }
+  };
 
   // Create and navigate to a new nested page
   const handleInsertNestedPage = async () => {
@@ -1038,39 +1314,93 @@ export default function NoteScreen() {
 
   // Handle DELETE_BLOCK command
   const handleDeleteBlockCommand = async (commandResult) => {
-    // Check if we have target block IDs to delete
-    if (
-      !commandResult.targetBlockIds ||
-      !Array.isArray(commandResult.targetBlockIds) ||
-      commandResult.targetBlockIds.length === 0
-    ) {
-      console.warn("No target blocks specified for deletion");
-      Toast.show({
-        type: "info",
-        text1: "Command Unclear",
-        text2: "Please specify which block to delete",
-        visibilityTime: 2000,
-      });
-      return;
-    }
-
     try {
-      // Set loading state
       setIsSaving(true);
+      console.log("Executing delete block command");
 
-      // Log the blocks we're trying to delete
-      console.log("Attempting to delete blocks:", commandResult.targetBlockIds);
-
-      // Get current content to validate block IDs
+      // Get the latest content
       const currentContent = editorContent || initialContent || [];
+      if (!currentContent || currentContent.length === 0) {
+        console.warn("No content to delete blocks from");
+        Toast.show({
+          type: "info",
+          text1: "No Content",
+          text2: "There are no blocks to delete",
+          visibilityTime: 2000,
+        });
+        setIsSaving(false);
+        return;
+      }
 
-      // Helper function to check if a block ID exists
+      // Check if we need to use the current selection
+      if (commandResult.useCurrentSelection === true) {
+        console.log("Using current selection for delete operation");
+
+        // Try to get the currently focused block from the editor
+        let currentBlockId = null;
+
+        // First try to get it from the editor reference
+        if (
+          editorRef.current &&
+          typeof editorRef.current.getCurrentBlockId === "function"
+        ) {
+          try {
+            currentBlockId = editorRef.current.getCurrentBlockId();
+            console.log(
+              "Got current block ID from editor for deletion:",
+              currentBlockId
+            );
+          } catch (error) {
+            console.error(
+              "Error getting current block ID for deletion:",
+              error
+            );
+          }
+        }
+
+        // If that fails, use the last block as a fallback
+        if (!currentBlockId && currentContent.length > 0) {
+          console.log(
+            "No current selection found, using last block as fallback for deletion"
+          );
+          const lastBlock = currentContent[currentContent.length - 1];
+          currentBlockId = lastBlock.id;
+          console.log(
+            "Using last block ID as fallback for deletion:",
+            currentBlockId
+          );
+        }
+
+        // If we found a block ID, use it for deletion
+        if (currentBlockId) {
+          commandResult.targetBlockIds = [currentBlockId];
+          console.log("Set target block for deletion:", currentBlockId);
+        }
+      }
+
+      // Validate block IDs to delete
+      if (
+        !commandResult.targetBlockIds ||
+        !Array.isArray(commandResult.targetBlockIds) ||
+        commandResult.targetBlockIds.length === 0
+      ) {
+        console.warn("No valid block IDs to delete");
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Could not determine which block(s) to delete",
+          visibilityTime: 2000,
+        });
+        setIsSaving(false);
+        return;
+      }
+
+      // Check if the blocks to delete exist
       const blockExists = (blocks, blockId) => {
         for (const block of blocks) {
           if (block.id === blockId) {
             return true;
           }
-
           // Check children recursively
           if (
             block.children &&
@@ -1999,7 +2329,16 @@ export default function NoteScreen() {
           editorRef.current &&
           typeof editorRef.current.getCurrentBlockId === "function"
         ) {
-          currentBlockId = editorRef.current.getCurrentBlockId();
+          try {
+            currentBlockId = editorRef.current.getCurrentBlockId();
+            console.log("Got current block ID from editor:", currentBlockId);
+          } catch (error) {
+            console.error("Error getting current block ID:", error);
+          }
+        } else {
+          console.warn(
+            "Editor reference or getCurrentBlockId method not available"
+          );
         }
 
         // If that fails, use the last block as a fallback
@@ -2009,6 +2348,7 @@ export default function NoteScreen() {
           );
           const lastBlock = currentContent[currentContent.length - 1];
           currentBlockId = lastBlock.id;
+          console.log("Using last block ID as fallback:", currentBlockId);
         }
 
         if (currentBlockId) {
@@ -2017,6 +2357,7 @@ export default function NoteScreen() {
             for (let i = 0; i < blocks.length; i++) {
               const block = blocks[i];
               if (block.id === blockId) {
+                console.log(`Found block with ID ${blockId} at index ${i}`);
                 return { block, index: i };
               }
 
@@ -2042,11 +2383,16 @@ export default function NoteScreen() {
             console.log(
               `Using current block with ID ${currentBlockId} at index ${result.index} for modification`
             );
+          } else {
+            console.warn(
+              `Block with ID ${currentBlockId} not found in content`
+            );
           }
         }
 
         // If we still don't have a target block, show an error
         if (targetBlocks.length === 0) {
+          console.error("Could not determine which block is selected");
           Toast.show({
             type: "error",
             text1: "Selection Error",
@@ -2464,171 +2810,6 @@ export default function NoteScreen() {
     }
   };
 
-  // Handle UNDO command
-  const handleUndoCommand = async (commandResult) => {
-    try {
-      // Get the number of steps to undo (default to 1)
-      const steps = commandResult.steps || 1;
-
-      // For undo/redo, we need to rely on the editor's history
-      // We can't implement this directly with local storage since we don't track history
-      // So we'll try to use the editor's undo/redo methods if available
-
-      if (editorRef.current && typeof editorRef.current.undo === "function") {
-        // Execute the undo command using the editor's method
-        const undoResult = editorRef.current.undo(steps);
-
-        // If undo was successful, we need to get the updated content
-        if (undoResult) {
-          // Try to get the updated content from the editor
-          const editor = editorRef.current?.getEditor
-            ? editorRef.current.getEditor()
-            : null;
-
-          if (editor) {
-            const updatedContent = editor.topLevelBlocks;
-
-            // Update state variables
-            setEditorContent(updatedContent);
-            setInitialContent(updatedContent);
-
-            // Save to storage
-            if (currentPage) {
-              const contentJsonString = JSON.stringify(updatedContent);
-              const updatedPage = {
-                ...currentPage,
-                contentJson: contentJsonString,
-                updatedAt: Date.now(),
-              };
-
-              const savedPage = await storageSavePage(updatedPage);
-              setCurrentPage(savedPage);
-
-              // Force refresh the editor
-              setForceRefresh((prev) => prev + 10);
-
-              // Show success message
-              Toast.show({
-                type: "success",
-                text1: "Success",
-                text2:
-                  steps === 1 ? "Undid last change" : `Undid ${steps} changes`,
-                visibilityTime: 2000,
-              });
-            }
-          }
-        } else {
-          // Show error message
-          Toast.show({
-            type: "info",
-            text1: "Cannot Undo",
-            text2: "No more actions to undo",
-            visibilityTime: 2000,
-          });
-        }
-      } else {
-        // If the editor's undo method is not available
-        Toast.show({
-          type: "info",
-          text1: "Undo Unavailable",
-          text2: "Undo functionality is not available right now",
-          visibilityTime: 2000,
-        });
-      }
-    } catch (error) {
-      console.error("Error performing undo:", error);
-      Toast.show({
-        type: "error",
-        text1: "Undo Error",
-        text2: "Failed to undo",
-        visibilityTime: 2000,
-      });
-    }
-  };
-
-  // Handle REDO command
-  const handleRedoCommand = async (commandResult) => {
-    try {
-      // Get the number of steps to redo (default to 1)
-      const steps = commandResult.steps || 1;
-
-      // Similar to undo, we need to rely on the editor's history
-      // We can't implement this directly with local storage
-
-      if (editorRef.current && typeof editorRef.current.redo === "function") {
-        // Execute the redo command using the editor's method
-        const redoResult = editorRef.current.redo(steps);
-
-        // If redo was successful, we need to get the updated content
-        if (redoResult) {
-          // Try to get the updated content from the editor
-          const editor = editorRef.current?.getEditor
-            ? editorRef.current.getEditor()
-            : null;
-
-          if (editor) {
-            const updatedContent = editor.topLevelBlocks;
-
-            // Update state variables
-            setEditorContent(updatedContent);
-            setInitialContent(updatedContent);
-
-            // Save to storage
-            if (currentPage) {
-              const contentJsonString = JSON.stringify(updatedContent);
-              const updatedPage = {
-                ...currentPage,
-                contentJson: contentJsonString,
-                updatedAt: Date.now(),
-              };
-
-              const savedPage = await storageSavePage(updatedPage);
-              setCurrentPage(savedPage);
-
-              // Force refresh the editor
-              setForceRefresh((prev) => prev + 10);
-
-              // Show success message
-              Toast.show({
-                type: "success",
-                text1: "Success",
-                text2:
-                  steps === 1
-                    ? "Redid last undone change"
-                    : `Redid ${steps} undone changes`,
-                visibilityTime: 2000,
-              });
-            }
-          }
-        } else {
-          // Show error message
-          Toast.show({
-            type: "info",
-            text1: "Cannot Redo",
-            text2: "No more actions to redo",
-            visibilityTime: 2000,
-          });
-        }
-      } else {
-        // If the editor's redo method is not available
-        Toast.show({
-          type: "info",
-          text1: "Redo Unavailable",
-          text2: "Redo functionality is not available right now",
-          visibilityTime: 2000,
-        });
-      }
-    } catch (error) {
-      console.error("Error performing redo:", error);
-      Toast.show({
-        type: "error",
-        text1: "Redo Error",
-        text2: "Failed to redo",
-        visibilityTime: 2000,
-      });
-    }
-  };
-
   if (storageLoading || isLoading) {
     return (
       <SafeAreaView
@@ -2690,6 +2871,10 @@ export default function NoteScreen() {
         onTitleChange={handleTitleChange}
         onIconChange={handleIconChange}
         onBackPress={handleGoBack}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={canUndo}
+        canRedo={canRedo}
         isSaving={isSaving}
         theme={theme}
         multilineTitle={true}
