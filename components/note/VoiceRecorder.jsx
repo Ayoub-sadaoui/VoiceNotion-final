@@ -195,39 +195,15 @@ const VoiceRecorder = ({
     });
   };
 
-  // Handle long press to activate Ask AI mode
-  const handleLongPress = () => {
-    console.log("Long press detected - activating Ask AI mode");
-    setIsAskAIMode(true);
-    // Hide the hint when user successfully uses long press
-    setShowHint(false);
-    handleVoiceRecordPress();
-  };
-
-  // Handle press in to start timer for long press
-  const handlePressIn = () => {
-    // Set a timer for 1 second
-    const timer = setTimeout(() => {
-      handleLongPress();
-    }, 1000);
-    setLongPressTimer(timer);
-  };
-
-  // Handle press out to clear timer if released before long press threshold
-  const handlePressOut = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
-    }
-  };
-
   // Handle voice record button press
   const handleVoiceRecordPress = async () => {
     try {
       // If we're already recording, stop the recording
       if (isRecording) {
+        // Safely stop recording and get URI
         const uri = await stopRecording();
-        // Process the recording for transcription
+
+        // Process the recording for transcription if we have a valid URI
         if (uri) {
           setIsProcessing(true);
           const rawTranscription = await transcribeAudio(uri);
@@ -241,7 +217,8 @@ const VoiceRecorder = ({
                 // Process as an AI question
                 console.log("Processing in Ask AI mode");
                 const aiResponse = await geminiService.askGeminiAI(
-                  rawTranscription
+                  rawTranscription,
+                  editorContent
                 );
 
                 // Reset Ask AI mode
@@ -346,14 +323,7 @@ const VoiceRecorder = ({
           staysActiveInBackground: false,
         });
 
-        // Check for any existing recordings in the system
-        if (recording) {
-          console.log("Found existing recording, stopping it first");
-          await recording.stopAndUnloadAsync();
-          setRecording(null);
-        }
-
-        // Permission is granted, start recording
+        // Start recording
         await startRecording();
       } catch (error) {
         console.error("Error preparing for recording:", error);
@@ -381,6 +351,17 @@ const VoiceRecorder = ({
   // Start recording function
   const startRecording = async () => {
     try {
+      // Make sure we don't have an existing recording
+      if (recording !== null) {
+        console.log("Cleaning up existing recording before starting a new one");
+        try {
+          await recording.stopAndUnloadAsync();
+        } catch (err) {
+          console.log("Recording was already unloaded or never started");
+        }
+        setRecording(null);
+      }
+
       // Use AMR format which is well-supported by Google Speech-to-Text
       const { recording: newRecording } = await Audio.Recording.createAsync({
         android: {
@@ -422,16 +403,27 @@ const VoiceRecorder = ({
   // Stop recording function
   const stopRecording = async () => {
     if (!recording) {
+      console.log("No active recording to stop");
       return null;
     }
 
     try {
-      // Stop the recording
-      await recording.stopAndUnloadAsync();
-      console.log("Recording stopped successfully");
+      console.log("Stopping recording...");
 
-      // Get the recorded URI
+      // Get the URI before stopping (in case we need it)
       const uri = recording.getURI();
+
+      // Safely stop the recording
+      try {
+        await recording.stopAndUnloadAsync();
+        console.log("Recording stopped successfully");
+      } catch (stopError) {
+        console.log(
+          "Error stopping recording (may already be stopped):",
+          stopError.message
+        );
+        // Continue with the flow even if there was an error stopping
+      }
 
       // Reset recording state
       setRecording(null);
@@ -440,11 +432,54 @@ const VoiceRecorder = ({
       return uri;
     } catch (error) {
       console.error("Failed to stop recording:", error);
-      Alert.alert("Error", "Failed to stop recording.");
+      // Don't show an alert here, just log the error
+
+      // Reset recording state
       setIsRecording(false);
       setRecording(null);
-      animateError(); // Trigger error animation
       return null;
+    }
+  };
+
+  // Handle long press to activate Ask AI mode
+  const handleLongPress = () => {
+    console.log("Long press detected - activating Ask AI mode");
+
+    // If we're already recording, stop it first
+    if (isRecording && recording) {
+      try {
+        recording.stopAndUnloadAsync();
+      } catch (err) {
+        console.log("Error stopping existing recording:", err.message);
+      }
+      setRecording(null);
+      setIsRecording(false);
+    }
+
+    // Now set Ask AI mode and start a new recording
+    setIsAskAIMode(true);
+
+    // Hide the hint when user successfully uses long press
+    setShowHint(false);
+
+    // Start the voice recording process
+    handleVoiceRecordPress();
+  };
+
+  // Handle press in to start timer for long press
+  const handlePressIn = () => {
+    // Set a timer for 1 second
+    const timer = setTimeout(() => {
+      handleLongPress();
+    }, 1000);
+    setLongPressTimer(timer);
+  };
+
+  // Handle press out to clear timer if released before long press threshold
+  const handlePressOut = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
     }
   };
 

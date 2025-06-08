@@ -1235,14 +1235,27 @@ export default function NoteScreen() {
       // Handle different command types
       switch (commandResult.action) {
         case "INSERT_AI_ANSWER":
-          // Handle AI answer insertion
+        case "INSERT_AI_SUMMARY":
+        case "INSERT_AI_COMPLETION":
+        case "INSERT_AI_REWRITE":
+          // Handle all AI-generated content insertion
           if (commandResult.blocks && Array.isArray(commandResult.blocks)) {
             console.log(
-              "Inserting AI answer blocks:",
+              `Inserting ${commandResult.action} blocks:`,
               commandResult.blocks.length
             );
 
-            // Create a header block to indicate this is an AI answer
+            // Create appropriate header text based on action type
+            let headerText = "AI Answer";
+            if (commandResult.action === "INSERT_AI_SUMMARY") {
+              headerText = "AI Summary";
+            } else if (commandResult.action === "INSERT_AI_COMPLETION") {
+              headerText = "AI Completion";
+            } else if (commandResult.action === "INSERT_AI_REWRITE") {
+              headerText = "AI Rewrite";
+            }
+
+            // Create a header block to indicate what type of AI content this is
             const headerBlock = {
               type: "heading",
               props: {
@@ -1254,7 +1267,7 @@ export default function NoteScreen() {
               content: [
                 {
                   type: "text",
-                  text: "AI Answer",
+                  text: headerText,
                   styles: {
                     bold: true,
                   },
@@ -1270,20 +1283,20 @@ export default function NoteScreen() {
             if (success) {
               Toast.show({
                 type: "success",
-                text1: "AI Answer Added",
-                text2: "The AI response has been added to your note",
+                text1: headerText + " Added",
+                text2: `The AI ${headerText.toLowerCase()} has been added to your note`,
                 visibilityTime: 2000,
               });
             } else {
               Toast.show({
                 type: "error",
                 text1: "Error",
-                text2: "Failed to add AI answer to note",
+                text2: `Failed to add ${headerText.toLowerCase()} to note`,
                 visibilityTime: 2000,
               });
             }
           } else {
-            console.error("Invalid AI answer format:", commandResult);
+            console.error("Invalid AI content format:", commandResult);
             Toast.show({
               type: "error",
               text1: "Error",
@@ -1369,7 +1382,7 @@ export default function NoteScreen() {
   const handleDeleteBlockCommand = async (commandResult) => {
     try {
       setIsSaving(true);
-      console.log("Executing delete block command");
+      console.log("Executing delete block command with:", commandResult);
 
       // Get the latest content
       const currentContent = editorContent || initialContent || [];
@@ -1385,51 +1398,9 @@ export default function NoteScreen() {
         return;
       }
 
-      // Check if we need to use the current selection
-      if (commandResult.useCurrentSelection === true) {
-        console.log("Using current selection for delete operation");
-
-        // Try to get the currently focused block from the editor
-        let currentBlockId = null;
-
-        // First try to get it from the editor reference
-        if (
-          editorRef.current &&
-          typeof editorRef.current.getCurrentBlockId === "function"
-        ) {
-          try {
-            currentBlockId = editorRef.current.getCurrentBlockId();
-            console.log(
-              "Got current block ID from editor for deletion:",
-              currentBlockId
-            );
-          } catch (error) {
-            console.error(
-              "Error getting current block ID for deletion:",
-              error
-            );
-          }
-        }
-
-        // If that fails, use the last block as a fallback
-        if (!currentBlockId && currentContent.length > 0) {
-          console.log(
-            "No current selection found, using last block as fallback for deletion"
-          );
-          const lastBlock = currentContent[currentContent.length - 1];
-          currentBlockId = lastBlock.id;
-          console.log(
-            "Using last block ID as fallback for deletion:",
-            currentBlockId
-          );
-        }
-
-        // If we found a block ID, use it for deletion
-        if (currentBlockId) {
-          commandResult.targetBlockIds = [currentBlockId];
-          console.log("Set target block for deletion:", currentBlockId);
-        }
-      }
+      // Log the blocks we're trying to delete
+      console.log("Target block IDs to delete:", commandResult.targetBlockIds);
+      console.log("Current content block count:", currentContent.length);
 
       // Validate block IDs to delete
       if (
@@ -1448,71 +1419,53 @@ export default function NoteScreen() {
         return;
       }
 
-      // Check if the blocks to delete exist
-      const blockExists = (blocks, blockId) => {
-        for (const block of blocks) {
-          if (block.id === blockId) {
-            return true;
-          }
-          // Check children recursively
-          if (
-            block.children &&
-            Array.isArray(block.children) &&
-            block.children.length > 0
-          ) {
-            if (blockExists(block.children, blockId)) {
-              return true;
-            }
-          }
-        }
-        return false;
-      };
-
-      // Validate that the block IDs exist in the content
-      const validBlockIds = commandResult.targetBlockIds.filter((blockId) =>
-        blockExists(currentContent, blockId)
-      );
-
-      if (validBlockIds.length === 0) {
-        console.warn("No valid block IDs found for deletion");
-        Toast.show({
-          type: "info",
-          text1: "Block Not Found",
-          text2: "Could not find the specified block to delete",
-          visibilityTime: 2000,
+      // Debug: Log the first few blocks of current content
+      if (currentContent.length > 0) {
+        console.log("First block:", {
+          id: currentContent[0].id,
+          type: currentContent[0].type,
+          content: currentContent[0].content,
         });
-        setIsSaving(false);
-        return;
+
+        if (currentContent.length > 1) {
+          console.log("Second block:", {
+            id: currentContent[1].id,
+            type: currentContent[1].type,
+            content: currentContent[1].content,
+          });
+        }
       }
 
-      console.log(`Found ${validBlockIds.length} valid blocks to delete`);
-
-      // Delete blocks directly from content
-      // Make a deep copy of the content
-      const updatedContent = JSON.parse(JSON.stringify(currentContent));
-
-      // Helper function to recursively remove blocks by ID
-      const removeBlocksById = (blocks, idsToRemove) => {
-        return blocks.filter((block) => {
-          // Check if this block should be removed
-          const shouldRemove = idsToRemove.includes(block.id);
-
-          // If the block has children, recursively filter them too
-          if (
-            block.children &&
-            Array.isArray(block.children) &&
-            block.children.length > 0
-          ) {
-            block.children = removeBlocksById(block.children, idsToRemove);
-          }
-
-          // Keep the block if it shouldn't be removed
-          return !shouldRemove;
+      // Debug: Log the last block
+      if (currentContent.length > 0) {
+        const lastBlock = currentContent[currentContent.length - 1];
+        console.log("Last block:", {
+          id: lastBlock.id,
+          type: lastBlock.type,
+          content: lastBlock.content,
         });
-      };
+      }
 
-      // Remove the blocks
-      const filteredContent = removeBlocksById(updatedContent, validBlockIds);
+      // Simple approach: Create a new array without the blocks to delete
+      const blocksToDelete = new Set(commandResult.targetBlockIds);
+      console.log("Creating Set of blocks to delete:", blocksToDelete);
+
+      // Create a simple copy of the content without the blocks to delete
+      const filteredContent = currentContent.filter((block) => {
+        const shouldKeep = !blocksToDelete.has(block.id);
+        if (!shouldKeep) {
+          console.log(
+            `Removing block with ID ${block.id} of type ${block.type}`
+          );
+        }
+        return shouldKeep;
+      });
+
+      console.log(
+        `Filtered content has ${filteredContent.length} blocks (removed ${
+          currentContent.length - filteredContent.length
+        })`
+      );
 
       // Update state with the new content
       setEditorContent(filteredContent);
@@ -1538,24 +1491,26 @@ export default function NoteScreen() {
           editorRef.current &&
           typeof editorRef.current.setContent === "function"
         ) {
-          editorRef.current.setContent(filteredContent);
+          try {
+            console.log("Updating editor content directly");
+            editorRef.current.setContent(filteredContent);
 
-          // Try focusing the editor to ensure refresh
-          setTimeout(() => {
-            if (typeof editorRef.current.focusEditor === "function") {
-              editorRef.current.focusEditor();
-            }
-          }, 50);
+            // Try focusing the editor to ensure refresh
+            setTimeout(() => {
+              if (typeof editorRef.current.focusEditor === "function") {
+                editorRef.current.focusEditor();
+              }
+            }, 50);
+          } catch (editorError) {
+            console.error("Error updating editor content:", editorError);
+          }
         }
 
         // Show success message
         Toast.show({
           type: "success",
           text1: "Success",
-          text2:
-            validBlockIds.length === 1
-              ? "Block deleted successfully"
-              : `${validBlockIds.length} blocks deleted successfully`,
+          text2: "Block deleted successfully",
           visibilityTime: 2000,
         });
       }

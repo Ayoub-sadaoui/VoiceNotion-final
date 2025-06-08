@@ -52,6 +52,32 @@ const BlockNoteEditorWeb = forwardRef((props, ref) => {
       return false;
     },
 
+    // Get the currently focused block ID
+    getCurrentBlockId: () => {
+      if (editorRef.current && editorRef.current.getEditor) {
+        try {
+          const editor = editorRef.current.getEditor();
+          if (editor) {
+            // Get the current selection
+            const selection = editor.getSelection();
+            if (selection) {
+              // Return the ID of the block containing the selection
+              return selection.anchor.blockId;
+            }
+
+            // If no selection, try to get the last focused block
+            const blocks = editor.topLevelBlocks;
+            if (blocks && blocks.length > 0) {
+              return blocks[blocks.length - 1].id;
+            }
+          }
+        } catch (error) {
+          console.error("Error getting current block ID:", error);
+        }
+      }
+      return null;
+    },
+
     // Forward insertPageLink method
     insertPageLink: (pageId, pageTitle, pageIcon) => {
       if (editorRef.current && editorRef.current.insertPageLink) {
