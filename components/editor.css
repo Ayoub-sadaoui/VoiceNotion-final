@@ -4,9 +4,9 @@
 .blocknote-editor {
   height: 100%;
   width: 100%;
-  padding: 16px 16px 1200px 16px; /* Increased bottom padding to allow more scrolling space */
+  padding: 16px 16px 400px 16px !important; /* Increased bottom padding to allow more scrolling space */
   overflow-y: auto !important; /* Force overflow to be auto */
-  background-color: white;
+
   outline: none;
   -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
@@ -190,5 +190,96 @@ body {
   .bn-container .bn-formatting-toolbar .bn-button {
     padding: 4px !important;
     margin: 0 1px !important;
+  }
+}
+
+/* Add highlight animation for newly added content */
+@keyframes highlightFade {
+  0% {
+    background-color: rgba(255, 255, 0, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.highlight-new-content {
+  animation: highlightFade 2s ease-out;
+  border-radius: 4px;
+}
+
+/* Editor component styles */
+.blocknote-editor {
+  padding: 16px;
+  background-color: transparent;
+  height: 100%;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  outline: none;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* Ensure iOS compatibility for selection */
+.blocknote-editor [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Block styles */
+.bn-container {
+  margin: 10px 0;
+}
+
+/* Heading styles */
+.bn-heading-block h1 {
+  font-size: 24px;
+  margin-bottom: 16px;
+}
+
+.bn-heading-block h2 {
+  font-size: 22px;
+  margin-bottom: 14px;
+}
+
+.bn-heading-block h3 {
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+
+/* List styling */
+.bn-list-block li {
+  margin-bottom: 8px;
+}
+
+/* Table styling */
+.bn-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.bn-table th,
+.bn-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
+
+/* Mobile-specific styles */
+@media (max-width: 767px) {
+  .blocknote-editor {
+    padding: 12px;
+    font-size: 16px;
+  }
+
+  .bn-heading-block h1 {
+    font-size: 22px;
+  }
+
+  .bn-heading-block h2 {
+    font-size: 20px;
+  }
+
+  .bn-heading-block h3 {
+    font-size: 18px;
   }
 }

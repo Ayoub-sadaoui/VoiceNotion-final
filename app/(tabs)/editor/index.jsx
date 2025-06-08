@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   StyleSheet,
@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import HelloWorld from "../../../components/Editor.web";
+import EditorWeb from "../../../components/Editor.web";
 import { useTheme } from "../../../utils/themeContext";
 
 // Array of available icons for notes
@@ -98,6 +98,9 @@ export default function EditorScreen() {
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  // Create a ref to the editor component
+  const editorRef = useRef(null);
 
   // Try to use theme with fallback to prevent crash
   let theme;
@@ -247,12 +250,16 @@ export default function EditorScreen() {
         />
       </View>
 
-      <HelloWorld
-        title={title}
-        icon={selectedIcon}
-        keyboardHeight={keyboardHeight}
-        isKeyboardVisible={isKeyboardVisible}
-      />
+      <View style={styles.editorContainer}>
+        <EditorWeb
+          ref={editorRef}
+          title={title}
+          icon={selectedIcon}
+          theme={theme.mode || "light"}
+          keyboardHeight={keyboardHeight}
+          isKeyboardVisible={isKeyboardVisible}
+        />
+      </View>
 
       {renderIconPickerModal()}
     </View>
@@ -346,5 +353,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     margin: "1%",
     borderRadius: 8,
+  },
+  editorContainer: {
+    flex: 1,
+    width: "100%",
+    marginTop: 10,
+    paddingHorizontal: 10,
   },
 });

@@ -1,6 +1,10 @@
-import React, { forwardRef, useImperativeHandle, useRef } from "react";
-import { View, StyleSheet, Text, Platform } from "react-native";
-import { WebView } from "react-native-webview";
+import React, {
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useEffect,
+} from "react";
+import { View, StyleSheet, Text } from "react-native";
 import usePageStorage from "../hooks/usePageStorage";
 
 // This component is a native wrapper around our DOM Editor.web.jsx component
@@ -13,14 +17,26 @@ const Editor = forwardRef((props, ref) => {
     currentPageId,
     keyboardHeight,
     isKeyboardVisible,
+    recentTranscription,
     ...otherProps
   } = props;
 
   const editorRef = useRef(null);
-  const webViewRef = useRef(null);
 
   // Use page storage hooks for CRUD operations
   const { createNewPage, savePage, deletePage } = usePageStorage();
+
+  // Effect to handle recentTranscription updates
+  useEffect(() => {
+    if (recentTranscription && editorRef.current) {
+      // Focus the editor to refresh the view after new transcription
+      setTimeout(() => {
+        if (typeof editorRef.current.focusEditor === "function") {
+          editorRef.current.focusEditor();
+        }
+      }, 100);
+    }
+  }, [recentTranscription]);
 
   // Expose methods to parent components
   useImperativeHandle(ref, () => ({
@@ -35,15 +51,56 @@ const Editor = forwardRef((props, ref) => {
     // Insert a page link block
     insertPageLink: (pageId, pageTitle, pageIcon) => {
       if (editorRef.current) {
-        editorRef.current.insertPageLink(pageId, pageTitle, pageIcon);
+        return editorRef.current.insertPageLink(pageId, pageTitle, pageIcon);
       }
     },
 
     // Delete the current page
     deleteCurrentPage: () => {
       if (editorRef.current && currentPageId) {
-        editorRef.current.deleteCurrentPage(currentPageId);
+        return editorRef.current.deleteCurrentPage(currentPageId);
       }
+    },
+
+    // Focus the editor to ensure UI refresh
+    focusEditor: () => {
+      if (editorRef.current) {
+        if (typeof editorRef.current.focusEditor === "function") {
+          return editorRef.current.focusEditor();
+        } else if (
+          editorRef.current.getEditor &&
+          typeof editorRef.current.getEditor === "function"
+        ) {
+          try {
+            const editor = editorRef.current.getEditor();
+            if (editor && typeof editor.focus === "function") {
+              editor.focus();
+              return true;
+            }
+          } catch (err) {
+            console.error("Error focusing editor:", err);
+          }
+        }
+      }
+      return false;
+    },
+
+    // DEPRECATED: This method is kept for API compatibility only
+    // Use the direct AsyncStorage approach in note/[id].jsx instead
+    // via insertTranscriptionDirectly() function
+    insertTranscribedText: (text) => {
+      console.warn(
+        "Editor.insertTranscribedText is deprecated. Use direct AsyncStorage approach instead via insertTranscriptionDirectly."
+      );
+      return false;
+    },
+
+    // Direct access to the editor instance
+    getEditor: () => {
+      if (editorRef.current && editorRef.current.getEditor) {
+        return editorRef.current.getEditor();
+      }
+      return null;
     },
   }));
 
@@ -69,11 +126,8 @@ const Editor = forwardRef((props, ref) => {
         return Promise.reject(new Error("No current page ID provided"));
       }
 
-      console.log("Creating nested page with parent:", currentPageId);
-
       // Create new page with current page as parent
       const newPage = await createNewPage(currentPageId, pageTitle, pageIcon);
-      console.log("Created new nested page:", newPage.id);
       return newPage;
     } catch (err) {
       console.error("Error creating nested page:", err);
@@ -105,13 +159,13 @@ const Editor = forwardRef((props, ref) => {
     }
   };
 
-  // On DOM platforms, use the web editor directly
-  if (Platform.OS === "web") {
+  try {
     // Import the web version of the editor
-    const HelloWorld = require("./Editor.web").default;
+    // since we're using Expo's DOM component feature
+    const BlockNoteEditorWeb = require("./Editor.web").default;
 
     return (
-      <HelloWorld
+      <BlockNoteEditorWeb
         ref={editorRef}
         initialContent={initialContent}
         theme={theme}
@@ -125,19 +179,20 @@ const Editor = forwardRef((props, ref) => {
         {...otherProps}
       />
     );
-  }
+  } catch (error) {
+    console.error("Error loading Editor.web component:", error);
 
-  // For now, return a placeholder since WebView integration would require more work
-  // This will let us test the navigation without crashing
-  return (
-    <View style={styles.container}>
-      <View style={styles.placeholder}>
-        <Text style={styles.placeholderText}>
-          Editor placeholder - Would show BlockNote editor in web view
-        </Text>
+    // Fallback to placeholder if there's an error loading the editor
+    return (
+      <View style={styles.container}>
+        <View style={styles.placeholder}>
+          <Text style={styles.placeholderText}>
+            Error loading editor component. Please check console for details.
+          </Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  }
 });
 
 const styles = StyleSheet.create({

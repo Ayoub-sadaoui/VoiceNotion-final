@@ -71,3 +71,6 @@ Implement responsive design to cater to various screen sizes.
 Maintain consistent styling using a centralized theme or style guide.
 Write unit tests for each component using Jest and React Testing Library.
 Document components with clear comments and usage examples.
+
+don't add fallback approaches 
+when inserting new blocks or text to the editor progamaticly, save them directly to the locale storage without using the fucking blocknote api
