@@ -82,9 +82,13 @@ const PageHeader = ({
   onTitleChange,
   onIconChange,
   onBackPress,
+  onUndo,
+  onRedo,
   isSaving,
   theme,
   multilineTitle = true,
+  canUndo = true,
+  canRedo = true,
 }) => {
   const [showIconPicker, setShowIconPicker] = useState(false);
 
@@ -152,6 +156,36 @@ const PageHeader = ({
         <Ionicons name="arrow-back" size={24} color={theme.text} />
       </TouchableOpacity>
 
+      {/* Undo/Redo buttons */}
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity
+          style={[styles.actionButton, !canUndo && styles.disabledButton]}
+          onPress={onUndo}
+          disabled={!canUndo}
+          accessibilityLabel="Undo"
+          accessibilityRole="button"
+        >
+          <Ionicons
+            name="arrow-undo"
+            size={22}
+            color={canUndo ? theme.text : theme.secondaryText}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, !canRedo && styles.disabledButton]}
+          onPress={onRedo}
+          disabled={!canRedo}
+          accessibilityLabel="Redo"
+          accessibilityRole="button"
+        >
+          <Ionicons
+            name="arrow-redo"
+            size={22}
+            color={canRedo ? theme.text : theme.secondaryText}
+          />
+        </TouchableOpacity>
+      </View>
+
       {/* Save indicator */}
       {isSaving && (
         <View style={styles.savingIndicator}>
@@ -214,11 +248,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  actionsContainer: {
+    position: "absolute",
+    flexDirection: "row",
+    top: 20,
+    right: 15,
+    zIndex: 10,
+  },
+  actionButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 8,
+    backgroundColor: "rgba(0,0,0,0.05)",
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
   savingIndicator: {
     position: "absolute",
     flexDirection: "row",
     alignItems: "center",
-    top: 20,
+    top: 70,
     right: 15,
     zIndex: 10,
     paddingVertical: 6,

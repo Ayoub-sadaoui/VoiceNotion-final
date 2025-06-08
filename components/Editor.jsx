@@ -102,6 +102,50 @@ const Editor = forwardRef((props, ref) => {
       }
       return null;
     },
+
+    // Perform undo operation
+    undo: (steps = 1) => {
+      console.log("Editor.jsx: Calling undo with steps:", steps);
+      if (editorRef.current && typeof editorRef.current.undo === "function") {
+        return editorRef.current.undo(steps);
+      } else if (editorRef.current && editorRef.current.getEditor) {
+        try {
+          const editor = editorRef.current.getEditor();
+          if (editor && typeof editor.undo === "function") {
+            for (let i = 0; i < steps; i++) {
+              editor.undo();
+            }
+            return true;
+          }
+        } catch (err) {
+          console.error("Error performing undo:", err);
+        }
+      }
+      console.warn("Undo method not available on editor reference");
+      return false;
+    },
+
+    // Perform redo operation
+    redo: (steps = 1) => {
+      console.log("Editor.jsx: Calling redo with steps:", steps);
+      if (editorRef.current && typeof editorRef.current.redo === "function") {
+        return editorRef.current.redo(steps);
+      } else if (editorRef.current && editorRef.current.getEditor) {
+        try {
+          const editor = editorRef.current.getEditor();
+          if (editor && typeof editor.redo === "function") {
+            for (let i = 0; i < steps; i++) {
+              editor.redo();
+            }
+            return true;
+          }
+        } catch (err) {
+          console.error("Error performing redo:", err);
+        }
+      }
+      console.warn("Redo method not available on editor reference");
+      return false;
+    },
   }));
 
   // Handle content changes from the web editor
