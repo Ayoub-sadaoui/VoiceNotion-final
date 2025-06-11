@@ -5,15 +5,33 @@
 /**
  * Sanitize content to fix any malformed blocks, particularly pageLink blocks
  * @param {Array} content - The content to sanitize
+ * @param {string} title - Optional title to use for default content
  * @returns {Array} - The sanitized content
  */
-export const sanitizeContentBlocks = (content) => {
+export const sanitizeContentBlocks = (content, title = "New note") => {
   // Check if content is a valid array
   if (!content || !Array.isArray(content) || content.length === 0) {
     console.error(
       "Content is not a valid array or is empty, creating default content"
     );
     return [
+      {
+        type: "heading",
+        props: {
+          textColor: "default",
+          backgroundColor: "default",
+          textAlignment: "left",
+          level: 1,
+        },
+        content: [
+          {
+            type: "text",
+            text: title,
+            styles: {},
+          },
+        ],
+        children: [],
+      },
       {
         type: "paragraph",
         props: {
@@ -24,7 +42,7 @@ export const sanitizeContentBlocks = (content) => {
         content: [
           {
             type: "text",
-            text: "New note",
+            text: "",
             styles: {},
           },
         ],
@@ -154,6 +172,23 @@ export const sanitizeContentBlocks = (content) => {
     // Return a safe default if anything goes wrong during sanitization
     return [
       {
+        type: "heading",
+        props: {
+          textColor: "default",
+          backgroundColor: "default",
+          textAlignment: "left",
+          level: 1,
+        },
+        content: [
+          {
+            type: "text",
+            text: title,
+            styles: {},
+          },
+        ],
+        children: [],
+      },
+      {
         type: "paragraph",
         props: {
           textColor: "default",
@@ -163,7 +198,7 @@ export const sanitizeContentBlocks = (content) => {
         content: [
           {
             type: "text",
-            text: "New note",
+            text: "",
             styles: {},
           },
         ],

@@ -1,6 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import debounce from "lodash.debounce";
-import { sanitizeContentBlocks } from "../utils/contentUtils";
+import {
+  sanitizeContentBlocks,
+  createDefaultContent,
+} from "../utils/contentUtils";
 import { updateNote } from "../services/noteService";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -64,6 +67,12 @@ const useEditorContent = (
               );
               throw new Error("Content is not an array");
             }
+
+            // Check if array is empty or has invalid structure
+            if (content.length === 0) {
+              console.log("Content array is empty, creating default content");
+              content = createDefaultContent(currentPage.title || "Untitled");
+            }
           } catch (parseError) {
             console.error("Error parsing content JSON:", parseError);
             content = null;
@@ -73,10 +82,25 @@ const useEditorContent = (
         else if (currentPage.content && Array.isArray(currentPage.content)) {
           console.log("Using content array directly");
           content = currentPage.content;
+
+          // Check if array is empty
+          if (content.length === 0) {
+            console.log("Content array is empty, creating default content");
+            content = createDefaultContent(currentPage.title || "Untitled");
+          }
+        }
+
+        // If still no valid content, create default content
+        if (!content || !Array.isArray(content) || content.length === 0) {
+          console.log("No valid content found, creating default content");
+          content = createDefaultContent(currentPage.title || "Untitled");
         }
 
         // Sanitize content to ensure valid format
-        const sanitizedContent = sanitizeContentBlocks(content);
+        const sanitizedContent = sanitizeContentBlocks(
+          content,
+          currentPage.title || title || "Untitled"
+        );
         console.log(
           `Initializing editor with ${sanitizedContent?.length || 0} blocks`
         );
@@ -99,24 +123,10 @@ const useEditorContent = (
       } catch (error) {
         console.error("Error initializing page content:", error);
         // Create default content if parsing fails
-        const defaultContent = [
-          {
-            type: "paragraph",
-            props: {
-              textColor: "default",
-              backgroundColor: "default",
-              textAlignment: "left",
-            },
-            content: [
-              {
-                type: "text",
-                text: title || "Untitled",
-                styles: {},
-              },
-            ],
-            children: [],
-          },
-        ];
+        const defaultContent = sanitizeContentBlocks(
+          null,
+          currentPage.title || title || "Untitled"
+        );
 
         setInitialContent(defaultContent);
         setEditorContent(defaultContent);
@@ -154,21 +164,56 @@ const useEditorContent = (
   // Debounced save function
   const debouncedSave = useCallback(
     debounce(async (content) => {
-      if (!currentPage || !content || isInitialLoad) return;
+      if (!currentPage) return;
       if (savingOperationInProgress.current) return;
-      if (areContentsEqual(content, lastSavedContent)) {
-        console.log("Content unchanged, skipping save");
-        setIsSaving(false);
-        return;
-      }
+      if (isInitialLoad) return;
 
       try {
+        // Make sure we have valid content to save
+        if (!content) {
+          console.log(
+            "No content to save in debouncedSave, using default content"
+          );
+          const defaultContent = createDefaultContent(
+            currentPage.title || "Untitled"
+          );
+
+          if (areContentsEqual(defaultContent, lastSavedContent)) {
+            console.log(
+              "Default content matches last saved content, skipping save"
+            );
+            setIsSaving(false);
+            return;
+          }
+
+          // Continue with the default content
+          content = defaultContent;
+        } else if (areContentsEqual(content, lastSavedContent)) {
+          console.log("Content unchanged, skipping save");
+          setIsSaving(false);
+          return;
+        }
+
         savingOperationInProgress.current = true;
         // Show saving indicator immediately for better feedback
         setIsSaving(true);
 
         // Make sure content is properly structured as an array
-        let contentToSave = Array.isArray(content) ? [...content] : [];
+        let contentToSave;
+
+        if (Array.isArray(content)) {
+          // Deep clone to avoid reference issues
+          contentToSave = JSON.parse(JSON.stringify(content));
+        } else if (content && typeof content === "object") {
+          // If it's an object but not an array, wrap it
+          contentToSave = [JSON.parse(JSON.stringify(content))];
+        } else {
+          // If it's neither an array nor an object, create a default content
+          console.log(
+            "Invalid content format in debouncedSave, creating default content"
+          );
+          contentToSave = createDefaultContent(currentPage.title || "Untitled");
+        }
 
         // Remove any trailing empty blocks
         while (
@@ -187,24 +232,39 @@ const useEditorContent = (
 
         // Ensure all blocks have proper content
         contentToSave = contentToSave.map((block) => {
-          // Deep clone the block to avoid reference issues
-          const processedBlock = JSON.parse(JSON.stringify(block));
+          if (!block || typeof block !== "object") {
+            // If block is invalid, create a default paragraph
+            return {
+              type: "paragraph",
+              props: {
+                textColor: "default",
+                backgroundColor: "default",
+                textAlignment: "left",
+              },
+              content: [{ type: "text", text: "", styles: {} }],
+              children: [],
+            };
+          }
 
           // If the block has no content array or empty content, add a default text node
           if (
-            !processedBlock.content ||
-            !Array.isArray(processedBlock.content) ||
-            processedBlock.content.length === 0
+            !block.content ||
+            !Array.isArray(block.content) ||
+            block.content.length === 0
           ) {
             return {
-              ...processedBlock,
+              ...block,
               content: [{ type: "text", text: "", styles: {} }],
             };
           }
 
           // Ensure text nodes have at least an empty string
-          if (processedBlock.content) {
-            processedBlock.content = processedBlock.content.map((item) => {
+          if (block.content) {
+            block.content = block.content.map((item) => {
+              if (!item || typeof item !== "object") {
+                return { type: "text", text: "", styles: {} };
+              }
+
               if (item.type === "text" && item.text === undefined) {
                 return { ...item, text: "" };
               }
@@ -212,8 +272,21 @@ const useEditorContent = (
             });
           }
 
-          return processedBlock;
+          return block;
         });
+
+        // Log content structure for debugging
+        console.log(`Saving content with ${contentToSave.length} blocks`);
+        if (contentToSave.length > 0) {
+          console.log(
+            `Last block type: ${contentToSave[contentToSave.length - 1]?.type}`
+          );
+          console.log(
+            `Last block has ${
+              contentToSave[contentToSave.length - 1]?.content?.length || 0
+            } content items`
+          );
+        }
 
         const contentJsonString = JSON.stringify(contentToSave);
 
@@ -319,14 +392,32 @@ const useEditorContent = (
 
   // Force save function (non-debounced)
   const handleSave = useCallback(async () => {
-    if (!currentPage || !editorContent) return;
+    if (!currentPage) return;
     if (savingOperationInProgress.current) return;
-    if (areContentsEqual(editorContent, lastSavedContent)) {
-      console.log("Content unchanged, skipping force save");
-      return currentPage;
-    }
 
     try {
+      // Make sure we have valid content to save
+      if (!editorContent) {
+        console.log("No editor content to save, using default content");
+        const defaultContent = createDefaultContent(
+          currentPage.title || "Untitled"
+        );
+        setEditorContent(defaultContent);
+
+        if (areContentsEqual(defaultContent, lastSavedContent)) {
+          console.log(
+            "Default content matches last saved content, skipping save"
+          );
+          return currentPage;
+        }
+
+        // Continue with the default content
+        editorContent = defaultContent;
+      } else if (areContentsEqual(editorContent, lastSavedContent)) {
+        console.log("Content unchanged, skipping force save");
+        return currentPage;
+      }
+
       savingOperationInProgress.current = true;
       // Show saving indicator immediately
       setIsSaving(true);
@@ -338,9 +429,19 @@ const useEditorContent = (
       debouncedSave.cancel();
 
       // Make sure content is properly structured as an array
-      let contentToSave = Array.isArray(editorContent)
-        ? [...editorContent]
-        : [];
+      let contentToSave;
+
+      if (Array.isArray(editorContent)) {
+        // Deep clone to avoid reference issues
+        contentToSave = JSON.parse(JSON.stringify(editorContent));
+      } else if (editorContent && typeof editorContent === "object") {
+        // If it's an object but not an array, wrap it
+        contentToSave = [JSON.parse(JSON.stringify(editorContent))];
+      } else {
+        // If it's neither an array nor an object, create a default content
+        console.log("Invalid content format, creating default content");
+        contentToSave = createDefaultContent(currentPage.title || "Untitled");
+      }
 
       // Remove any trailing empty blocks
       while (
@@ -353,30 +454,45 @@ const useEditorContent = (
               "text" &&
             !contentToSave[contentToSave.length - 1]?.content[0]?.text))
       ) {
-        console.log("Removing trailing empty block before force saving");
+        console.log("Removing trailing empty block before saving");
         contentToSave.pop();
       }
 
       // Ensure all blocks have proper content
       contentToSave = contentToSave.map((block) => {
-        // Deep clone the block to avoid reference issues
-        const processedBlock = JSON.parse(JSON.stringify(block));
+        if (!block || typeof block !== "object") {
+          // If block is invalid, create a default paragraph
+          return {
+            type: "paragraph",
+            props: {
+              textColor: "default",
+              backgroundColor: "default",
+              textAlignment: "left",
+            },
+            content: [{ type: "text", text: "", styles: {} }],
+            children: [],
+          };
+        }
 
         // If the block has no content array or empty content, add a default text node
         if (
-          !processedBlock.content ||
-          !Array.isArray(processedBlock.content) ||
-          processedBlock.content.length === 0
+          !block.content ||
+          !Array.isArray(block.content) ||
+          block.content.length === 0
         ) {
           return {
-            ...processedBlock,
+            ...block,
             content: [{ type: "text", text: "", styles: {} }],
           };
         }
 
         // Ensure text nodes have at least an empty string
-        if (processedBlock.content) {
-          processedBlock.content = processedBlock.content.map((item) => {
+        if (block.content) {
+          block.content = block.content.map((item) => {
+            if (!item || typeof item !== "object") {
+              return { type: "text", text: "", styles: {} };
+            }
+
             if (item.type === "text" && item.text === undefined) {
               return { ...item, text: "" };
             }
@@ -384,8 +500,21 @@ const useEditorContent = (
           });
         }
 
-        return processedBlock;
+        return block;
       });
+
+      // Log content structure for debugging
+      console.log(`Saving content with ${contentToSave.length} blocks`);
+      if (contentToSave.length > 0) {
+        console.log(
+          `Last block type: ${contentToSave[contentToSave.length - 1]?.type}`
+        );
+        console.log(
+          `Last block has ${
+            contentToSave[contentToSave.length - 1]?.content?.length || 0
+          } content items`
+        );
+      }
 
       const contentJsonString = JSON.stringify(contentToSave);
 

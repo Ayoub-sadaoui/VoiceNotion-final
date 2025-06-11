@@ -58,6 +58,46 @@ const createPage = async (
 
     const timestamp = getTimestamp();
 
+    // Create default content for the new page
+    const defaultContent = [
+      {
+        type: "heading",
+        props: {
+          textColor: "default",
+          backgroundColor: "default",
+          textAlignment: "left",
+          level: 1,
+        },
+        content: [
+          {
+            type: "text",
+            text: title || "Untitled Page",
+            styles: {},
+          },
+        ],
+        children: [],
+      },
+      {
+        type: "paragraph",
+        props: {
+          textColor: "default",
+          backgroundColor: "default",
+          textAlignment: "left",
+        },
+        content: [
+          {
+            type: "text",
+            text: "",
+            styles: {},
+          },
+        ],
+        children: [],
+      },
+    ];
+
+    // Serialize content to JSON string
+    const contentJsonString = JSON.stringify(defaultContent);
+
     // Create page object
     const page = {
       id,
@@ -66,15 +106,16 @@ const createPage = async (
       icon,
       createdAt: timestamp,
       updatedAt: timestamp,
-      contentJson: "[]", // Empty content array as string
+      contentJson: contentJsonString, // Use properly formatted content
     };
 
     // Create note in Supabase
     const noteResult = await createNote(userId, {
       id: page.id,
       title: page.title,
-      content: [], // Empty content array for Supabase
+      content: defaultContent, // Use properly formatted content
       parentId: page.parentId,
+      icon: page.icon,
     });
 
     if (!noteResult.success) {
@@ -205,9 +246,13 @@ const deletePage = async (id, userId = null) => {
     const pages = result.notes;
     const idsToDelete = collectPageAndDescendantIds(pages, id);
 
-    // Delete notes in Supabase
+    console.log(
+      `Deleting page ${id} and ${idsToDelete.length - 1} descendants`
+    );
+
+    // Delete notes in Supabase - use hard delete to completely remove them
     for (const pageId of idsToDelete) {
-      const deleteResult = await deleteNote(userId, pageId);
+      const deleteResult = await deleteNote(userId, pageId, true); // true for hard delete
       if (!deleteResult.success) {
         console.warn(
           `Failed to delete note ${pageId} in Supabase:`,

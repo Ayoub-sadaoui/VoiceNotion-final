@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   titleInput: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: "600",
     padding: 0,
   },

@@ -345,20 +345,33 @@ export const updateNote = async (userId, noteId, updates) => {
 };
 
 // Delete a note
-export const deleteNote = async (userId, noteId) => {
+export const deleteNote = async (userId, noteId, hardDelete = false) => {
   try {
     if (!userId) {
       return { success: false, error: "User not authenticated" };
     }
 
-    // Soft delete in Supabase
-    const { error } = await supabase
-      .from("notes")
-      .update({ is_deleted: true })
-      .eq("id", noteId)
-      .eq("user_id", userId);
+    if (hardDelete) {
+      // Hard delete - completely remove from Supabase
+      console.log(`Hard deleting note ${noteId} for user ${userId}`);
+      const { error } = await supabase
+        .from("notes")
+        .delete()
+        .eq("id", noteId)
+        .eq("user_id", userId);
 
-    if (error) throw error;
+      if (error) throw error;
+    } else {
+      // Soft delete - set is_deleted flag to true
+      console.log(`Soft deleting note ${noteId} for user ${userId}`);
+      const { error } = await supabase
+        .from("notes")
+        .update({ is_deleted: true })
+        .eq("id", noteId)
+        .eq("user_id", userId);
+
+      if (error) throw error;
+    }
 
     return { success: true };
   } catch (error) {

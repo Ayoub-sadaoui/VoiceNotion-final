@@ -389,6 +389,9 @@ export default function HomeScreen() {
       if (result) {
         console.log("Page deleted successfully");
 
+        // Force reload pages to refresh the UI
+        await loadPages();
+
         // Show success toast
         Toast.show({
           type: "success",
