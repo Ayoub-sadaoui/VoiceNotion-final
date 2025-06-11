@@ -8,6 +8,9 @@ VoiceNotion is a voice-enabled note-taking application built with Expo and React
 - Block-based editor powered by BlockNote.js
 - Support for various content blocks (text, headings, lists, etc.)
 - Mobile-first design with intuitive UI
+- User authentication with Supabase
+- Cloud synchronization of notes across devices
+- Offline support with local storage
 
 ## Project Structure
 
@@ -16,7 +19,8 @@ VoiceNotion is a voice-enabled note-taking application built with Expo and React
 - `/services`: API calls and business logic
 - `/hooks`: Custom React hooks
 - `/utils`: Helper functions and utilities
-- `/editor-web-content`: HTML content for the BlockNote editor WebView
+- `/models`: Data models and type definitions
+- `/contexts`: React context providers
 
 ## Setup Instructions
 
@@ -25,11 +29,18 @@ VoiceNotion is a voice-enabled note-taking application built with Expo and React
    ```
    npm install
    ```
-3. Start the development server:
+3. Set up Supabase:
+   - Follow the instructions in [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) to create a Supabase project
+   - Create a `.env` file with your Supabase credentials:
+     ```
+     EXPO_PUBLIC_SUPABASE_URL=your-supabase-url
+     EXPO_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+     ```
+4. Start the development server:
    ```
    npm start
    ```
-4. Run on iOS or Android:
+5. Run on iOS or Android:
    ```
    npm run ios
    ```
@@ -43,31 +54,39 @@ VoiceNotion is a voice-enabled note-taking application built with Expo and React
 - Expo SDK 53+
 - React Native
 - Expo Router for navigation
-- BlockNote.js for rich text editing (via WebView)
+- BlockNote.js for rich text editing (via Expo DOM Components)
 - Zustand for state management
+- Supabase for authentication and data storage
+
+## Authentication & Data Sync
+
+VoiceNotion uses Supabase for user authentication and data synchronization:
+
+- **Authentication**: Email/password authentication with secure token storage
+- **Note Storage**: Notes are stored in Supabase PostgreSQL database with real-time capabilities
+- **Offline Support**: Notes are cached locally and synced when online
+- **Sync Status**: Visual indicators show sync status in the app
+
+For detailed setup instructions, see [SUPABASE_SETUP.md](./SUPABASE_SETUP.md).
 
 ## Current Status
 
-This is an early prototype with the following implemented features:
+This project now includes:
 
-- Basic app structure with bottom tab navigation
-- BlockNote editor integration via WebView
-- Mock voice input functionality
-
-## Next Steps
-
-- Implement real voice recording using device microphone
-- Integrate with Gemini API for voice intent parsing
-- Add support for more block types and formatting options
-- Implement note saving and organization
+- Complete app structure with bottom tab navigation
+- BlockNote editor integration
+- Voice input functionality
+- User authentication (login, signup, password reset)
+- Note synchronization with Supabase
+- Offline support
 
 ## Voice Command Content Editing
 
-VoiceNotion now supports editing content through voice commands, which enables users to format text, select content, replace text, modify blocks, and perform undo/redo operations using their voice.
+VoiceNotion supports editing content through voice commands, which enables users to format text, select content, replace text, modify blocks, and perform undo/redo operations using their voice.
 
 ### Available Voice Commands
 
-The following voice command types are now available:
+The following voice command types are available:
 
 1. **Text Formatting Commands**
 
@@ -111,14 +130,13 @@ To use voice commands for editing:
 
 See the full list of voice commands in [VOICE_COMMANDS.md](./VOICE_COMMANDS.md).
 
-### Implementation Notes
+## Next Steps
 
-Voice command editing uses the following components:
-
-- Gemini API for natural language parsing and intent extraction
-- WebView communication between React Native and BlockNote editor
-- TranscriptionHandler for executing editor commands
-- Direct storage updates to ensure persistence
+- Add support for additional authentication providers
+- Implement real-time collaboration features
+- Enhance synchronization with conflict resolution
+- Add custom templates and themes
+- Improve accessibility features
 
 ## License
 

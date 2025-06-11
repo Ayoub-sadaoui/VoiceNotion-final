@@ -180,8 +180,35 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         // Check if any page link blocks were deleted
         checkForDeletedPageLinks();
 
-        // Call the onChange handler with the latest content
-        onChange(editor.topLevelBlocks);
+        // Process content before passing to onChange handler
+        const currentBlocks = editor.topLevelBlocks;
+
+        // Filter out any empty blocks at the end that might be automatically added
+        const processedBlocks = [...currentBlocks];
+
+        // If there's more than one block, check if the last one is an empty paragraph
+        if (processedBlocks.length > 1) {
+          const lastBlock = processedBlocks[processedBlocks.length - 1];
+
+          // Check if it's an empty paragraph (no content or empty text)
+          if (
+            lastBlock.type === "paragraph" &&
+            (!lastBlock.content ||
+              !lastBlock.content.length ||
+              (lastBlock.content.length === 1 &&
+                lastBlock.content[0].type === "text" &&
+                !lastBlock.content[0].text))
+          ) {
+            // If this is an automatically added empty block, remove it
+            if (!lastBlock.id.includes("user-created")) {
+              processedBlocks.pop();
+              console.log("Removed automatically added empty block at the end");
+            }
+          }
+        }
+
+        // Call the onChange handler with the processed content
+        onChange(processedBlocks);
       });
 
       // Cleanup when component unmounts

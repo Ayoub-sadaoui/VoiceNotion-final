@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -15,14 +15,39 @@ import { useTheme } from "../utils/themeContext";
  * Displays horizontally scrollable filter chips for categories, tags, etc.
  * Includes animations for selection change
  */
-const FilterChips = ({ filters, onFilterChange }) => {
+const FilterChips = ({ filters, activeFilter, onFilterChange }) => {
   const { theme } = useTheme();
-  const [selectedFilter, setSelectedFilter] = useState(filters[0]?.id || null);
+  const [selectedFilter, setSelectedFilter] = useState(
+    activeFilter || filters[0]?.id || null
+  );
 
   // Refs for storing animation values for each filter
   const animatedValues = useRef(
     filters.map(() => new Animated.Value(0))
   ).current;
+
+  // Update selected filter when activeFilter prop changes
+  useEffect(() => {
+    if (activeFilter && activeFilter !== selectedFilter) {
+      setSelectedFilter(activeFilter);
+
+      // Find index of active filter
+      const activeIndex = filters.findIndex(
+        (filter) => filter.id === activeFilter
+      );
+      if (activeIndex !== -1) {
+        // Reset all animation values
+        animatedValues.forEach((anim, i) => {
+          if (i !== activeIndex) {
+            anim.setValue(0);
+          }
+        });
+
+        // Set active filter animation value to 1
+        animatedValues[activeIndex].setValue(1);
+      }
+    }
+  }, [activeFilter, filters]);
 
   const handleFilterSelect = (filterId, index) => {
     // Only animate if selecting a different filter

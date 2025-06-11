@@ -44,9 +44,10 @@ const insertTranscribedText = (editor, text) => {
       text.substring(0, 50) + (text.length > 50 ? "..." : "")
     );
 
-    // Create a paragraph block with the text
+    // Create a paragraph block with the text and a special ID to mark it as user-created
     const newBlock = {
       type: "paragraph",
+      id: `user-created-${Date.now()}`,
       content: [
         {
           type: "text",
@@ -56,12 +57,34 @@ const insertTranscribedText = (editor, text) => {
       ],
     };
 
+    // Get the last block ID to insert after it
+    const lastBlockId =
+      editor.document.length > 0
+        ? editor.document[editor.document.length - 1].id
+        : null;
+
     // Insert at the end
-    editor.insertBlocks(
-      [newBlock],
-      editor.document[editor.document.length - 1]?.id || null,
-      "after"
-    );
+    editor.insertBlocks([newBlock], lastBlockId, "after");
+
+    // Force update to ensure content change is detected
+    setTimeout(() => {
+      // Trigger a change event to ensure content is saved
+      if (editor._tiptapEditor) {
+        // Focus at the end of the newly inserted block
+        editor._tiptapEditor.commands.focus("end");
+
+        // Force a transaction to ensure the editor state is updated
+        editor._tiptapEditor.view.dispatch(editor._tiptapEditor.view.state.tr);
+
+        // Trigger the onChange callback manually if available
+        if (typeof editor._options.onUpdate === "function") {
+          editor._options.onUpdate({
+            editor: editor._tiptapEditor,
+            transaction: editor._tiptapEditor.view.state.tr,
+          });
+        }
+      }
+    }, 50);
 
     return true;
   } catch (error) {

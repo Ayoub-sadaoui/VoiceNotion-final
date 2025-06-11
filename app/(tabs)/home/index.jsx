@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -15,8 +15,9 @@ import {
   Image,
 } from "react-native";
 import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
-import { useRouter, Link } from "expo-router";
+import { useRouter, Link, useFocusEffect } from "expo-router";
 import { useTheme } from "../../../utils/themeContext";
+import { useAuth } from "../../../contexts/AuthContext";
 import ScreenHeader from "../../../components/ScreenHeader";
 import FloatingActionButton from "../../../components/FloatingActionButton";
 import usePageStorage from "../../../hooks/usePageStorage";
@@ -26,13 +27,14 @@ import {
   Swipeable,
 } from "react-native-gesture-handler";
 import Toast from "react-native-toast-message";
+import { fetchSupabaseNotesOnly } from "../../../services/noteService";
 
 // Recursive component for rendering a page tree item and its children
 const PageTreeItem = ({
   page,
   level = 0,
   onPress,
-  theme,
+  theme = {},
   expanded = false,
   onToggleExpand,
   onAddSubpage,
@@ -186,7 +188,9 @@ const PageTreeItem = ({
           style={[
             styles.pageItem,
             {
-              backgroundColor: isHovered ? theme.hoverItem : "transparent",
+              backgroundColor: isHovered
+                ? theme?.hover || "#F0F0F5"
+                : "transparent",
               borderRadius: 8,
             },
           ]}
@@ -209,7 +213,7 @@ const PageTreeItem = ({
                     isExpanded ? "keyboard-arrow-down" : "keyboard-arrow-right"
                   }
                   size={22}
-                  color={theme.tertiaryText}
+                  color={theme?.tertiaryText || "#999999"}
                 />
               ) : (
                 <View style={{ width: 22, height: 22 }} />
@@ -221,7 +225,7 @@ const PageTreeItem = ({
 
             {/* Page title */}
             <Text
-              style={[styles.pageTitle, { color: theme.text }]}
+              style={[styles.pageTitle, { color: theme?.text || "#333333" }]}
               numberOfLines={1}
               ellipsizeMode="tail"
             >
@@ -232,7 +236,12 @@ const PageTreeItem = ({
           {/* Action buttons (visible on hover/press) */}
           <View style={styles.actionButtons}>
             {/* Updated timestamp always visible */}
-            <Text style={[styles.pageDate, { color: theme.tertiaryText }]}>
+            <Text
+              style={[
+                styles.pageDate,
+                { color: theme?.tertiaryText || "#999999" },
+              ]}
+            >
               {formatDate(page.updatedAt)}
             </Text>
 
@@ -243,7 +252,11 @@ const PageTreeItem = ({
                 onPress={handleAddSubpage}
                 hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
               >
-                <Feather name="plus" size={18} color={theme.tertiaryText} />
+                <Feather
+                  name="plus"
+                  size={18}
+                  color={theme?.tertiaryText || "#999999"}
+                />
               </TouchableOpacity>
             )}
           </View>
@@ -257,26 +270,32 @@ const PageTreeItem = ({
 };
 
 // Recent page card component
-const RecentPageCard = ({ page, onPress, theme }) => {
+const RecentPageCard = ({ page, onPress, theme = {} }) => {
   return (
     <TouchableOpacity
       style={[
         styles.recentPageCard,
-        { backgroundColor: theme.cardBackground || theme.surfaceVariant },
+        {
+          backgroundColor:
+            theme?.card?.background || theme?.surface || "#FFFFFF",
+        },
       ]}
       onPress={() => onPress(page)}
       activeOpacity={0.7}
     >
       <Text style={styles.recentPageIcon}>{page.icon || "📄"}</Text>
       <Text
-        style={[styles.recentPageTitle, { color: theme.text }]}
+        style={[styles.recentPageTitle, { color: theme?.text || "#333333" }]}
         numberOfLines={1}
         ellipsizeMode="tail"
       >
         {page.title}
       </Text>
       <Text
-        style={[styles.recentPageDate, { color: theme.tertiaryText }]}
+        style={[
+          styles.recentPageDate,
+          { color: theme?.tertiaryText || "#999999" },
+        ]}
         numberOfLines={1}
       >
         {formatDate(page.updatedAt)}
@@ -316,23 +335,30 @@ const formatDate = (timestamp) => {
 };
 
 export default function HomeScreen() {
-  const { theme } = useTheme();
   const router = useRouter();
+  const { theme } = useTheme();
+  const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [expandedIds, setExpandedIds] = useState({});
   const [recentPages, setRecentPages] = useState([]);
+  const [syncStatus, setSyncStatus] = useState({
+    isSyncing: false,
+    lastSynced: null,
+    error: null,
+  });
 
-  // Get pages from storage
+  // Add a ref to track the last refresh time
+  const lastRefreshTime = useRef(0);
+
   const {
     pages,
     loading,
     loadPages,
     createNewPage,
-    getRootPages,
+    deletePage: deletePageFromStorage,
     createTestPages,
-    deletePage,
-  } = usePageStorage();
+  } = usePageStorage(user?.id);
 
   // Transform flat list of pages into hierarchical tree
   const [pageTree, setPageTree] = useState([]);
@@ -343,7 +369,11 @@ export default function HomeScreen() {
       setPageTree(tree);
 
       // Get recent pages (sorted by updatedAt)
-      const sorted = [...pages].sort((a, b) => b.updatedAt - a.updatedAt);
+      const sorted = [...pages].sort((a, b) => {
+        const dateA = new Date(b.updatedAt);
+        const dateB = new Date(a.updatedAt);
+        return dateA - dateB;
+      });
       setRecentPages(sorted.slice(0, 5)); // Get top 5 most recent pages
     } else {
       setPageTree([]);
@@ -355,9 +385,12 @@ export default function HomeScreen() {
   const handleDeletePage = async (pageId) => {
     try {
       console.log("Deleting page:", pageId);
-      const result = await deletePage(pageId);
+      const result = await deletePageFromStorage(pageId);
       if (result) {
         console.log("Page deleted successfully");
+
+        // Force reload pages to refresh the UI
+        await loadPages();
 
         // Show success toast
         Toast.show({
@@ -397,20 +430,11 @@ export default function HomeScreen() {
     const initialLoad = async () => {
       await loadPages();
 
-      // If no pages exist, create some test pages
-      if (pages.length === 0) {
-        try {
-          await createTestPages();
-          // Reload pages after creating test pages
-          await loadPages();
-        } catch (error) {
-          console.error("Error creating initial test pages:", error);
-        }
-      }
+      // Remove automatic test page creation
     };
 
     initialLoad();
-  }, []);
+  }, [user?.id, loadPages]);
 
   // Handle refreshing the page list
   const onRefresh = useCallback(async () => {
@@ -438,6 +462,17 @@ export default function HomeScreen() {
   // Handle creating a new page
   const handleCreatePage = async () => {
     try {
+      if (!user) {
+        Toast.show({
+          type: "error",
+          text1: "Authentication Required",
+          text2: "Please sign in to create notes",
+          position: "bottom",
+          visibilityTime: 3000,
+        });
+        return;
+      }
+
       console.log("Creating new root page...");
 
       // Create a new page at the root level (no parent)
@@ -469,6 +504,17 @@ export default function HomeScreen() {
   // Handle creating a subpage
   const handleAddSubpage = async (parentId) => {
     try {
+      if (!user) {
+        Toast.show({
+          type: "error",
+          text1: "Authentication Required",
+          text2: "Please sign in to create notes",
+          position: "bottom",
+          visibilityTime: 3000,
+        });
+        return;
+      }
+
       console.log("Creating new subpage with parent:", parentId);
 
       // Create a new page as a child of the selected page
@@ -532,7 +578,7 @@ export default function HomeScreen() {
               key={page.id}
               page={page}
               onPress={handlePagePress}
-              theme={theme}
+              theme={theme || {}}
             />
           ))}
         </ScrollView>
@@ -540,94 +586,169 @@ export default function HomeScreen() {
     );
   };
 
+  // Add useFocusEffect to refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log("Home screen focused, refreshing data");
+      // Use a ref to track if we've already refreshed to prevent multiple refreshes
+      const isMounted = { current: true };
+
+      const refreshData = async () => {
+        if (!isMounted.current) return;
+
+        // Prevent refreshing too frequently (only refresh if it's been at least 2 seconds)
+        const now = Date.now();
+        if (now - lastRefreshTime.current < 2000) {
+          console.log("Skipping refresh - too soon since last refresh");
+          return;
+        }
+
+        // Update the last refresh time
+        lastRefreshTime.current = now;
+
+        // Refresh the pages list
+        await loadPages();
+      };
+
+      refreshData();
+
+      return () => {
+        // Cleanup when component unmounts or loses focus
+        isMounted.current = false;
+      };
+    }, [loadPages])
+  );
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
     >
-      <View style={styles.headerRightContainer}>
-        <TouchableOpacity
-          onPress={onRefresh}
-          style={styles.headerButton}
-          activeOpacity={0.7}
-        >
-          <Feather name="refresh-cw" size={20} color={theme.text} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push("/(tabs)/search")}
-          style={styles.headerButton}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="search-outline" size={22} color={theme.text} />
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title={getGreeting()}
+        subtitle="What would you like to document today?"
+      />
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.loadingText, { color: theme.secondaryText }]}>
+            Loading notes...
+          </Text>
         </View>
       ) : (
-        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+        <Animated.View
+          style={[
+            styles.content,
+            {
+              opacity: fadeAnim,
+              transform: [
+                {
+                  translateY: fadeAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [10, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
           {renderRecentPagesSection()}
 
-          <FlatList
-            data={pageTree}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <PageTreeItem
-                page={item}
-                onPress={handlePagePress}
-                theme={theme}
-                expanded={!!expandedIds[item.id]}
-                onToggleExpand={handleToggleExpand}
-                onAddSubpage={handleAddSubpage}
-                onDeletePage={handleDeletePage}
-              />
-            )}
-            contentContainerStyle={styles.pagesList}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={theme.primary}
-                colors={[theme.primary]}
-              />
-            }
-            ListHeaderComponent={
-              <View style={styles.listHeader}>
-                <Text
-                  style={[styles.sectionTitle, { color: theme.secondaryText }]}
-                >
-                  All Pages
-                </Text>
-              </View>
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Ionicons
-                  name="document-outline"
-                  size={64}
-                  color={theme.tertiaryText}
+          <View style={styles.pagesSection}>
+            <Text style={[styles.sectionTitle, { color: theme.secondaryText }]}>
+              All Pages
+            </Text>
+
+            <FlatList
+              data={pageTree}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <PageTreeItem
+                  page={item}
+                  onPress={handlePagePress}
+                  theme={theme || {}}
+                  expanded={expandedIds[item.id] || false}
+                  onToggleExpand={handleToggleExpand}
+                  onAddSubpage={handleAddSubpage}
+                  onDeletePage={handleDeletePage}
                 />
-                <Text
-                  style={[styles.emptyText, { color: theme.secondaryText }]}
-                >
-                  No pages found
-                </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.createFirstButton,
-                    { backgroundColor: theme.primary },
-                  ]}
-                  onPress={handleCreatePage}
-                >
-                  <Text style={styles.createFirstButtonText}>
-                    Create your first page
+              )}
+              contentContainerStyle={styles.pagesList}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={theme.primary}
+                  colors={[theme.primary]}
+                />
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Ionicons
+                    name="document-outline"
+                    size={64}
+                    color={theme.tertiaryText}
+                  />
+                  <Text
+                    style={[styles.emptyText, { color: theme.secondaryText }]}
+                  >
+                    {user
+                      ? "No pages found"
+                      : "Please sign in to view your notes"}
                   </Text>
-                </TouchableOpacity>
-              </View>
-            }
-          />
+                  {user && (
+                    <View style={styles.emptyStateButtons}>
+                      <TouchableOpacity
+                        style={[
+                          styles.createFirstButton,
+                          { backgroundColor: theme.primary },
+                        ]}
+                        onPress={handleCreatePage}
+                      >
+                        <Text style={styles.createFirstButtonText}>
+                          Create blank page
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.createFirstButton,
+                          { backgroundColor: theme.secondary, marginTop: 12 },
+                        ]}
+                        onPress={async () => {
+                          try {
+                            await createTestPages();
+                            await loadPages();
+                            Toast.show({
+                              type: "success",
+                              text1: "Example Pages Created",
+                              text2:
+                                "Sample pages have been added to help you get started",
+                              position: "top",
+                              visibilityTime: 3000,
+                            });
+                          } catch (error) {
+                            console.error("Error creating test pages:", error);
+                            Toast.show({
+                              type: "error",
+                              text1: "Error",
+                              text2: "Failed to create example pages",
+                              position: "bottom",
+                              visibilityTime: 3000,
+                            });
+                          }
+                        }}
+                      >
+                        <Text style={styles.createFirstButtonText}>
+                          Create example pages
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              }
+            />
+          </View>
         </Animated.View>
       )}
 
@@ -639,6 +760,14 @@ export default function HomeScreen() {
   );
 }
 
+// Get appropriate greeting based on time of day
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -646,6 +775,22 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     marginLeft: 8,
+  },
+  greetingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  profileIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  greetingText: {
+    fontSize: 16,
+    fontWeight: "400",
   },
   headerRightContainer: {
     flexDirection: "row",
@@ -663,6 +808,7 @@ const styles = StyleSheet.create({
   // Recent pages section
   recentPagesSection: {
     paddingTop: 12,
+
     paddingBottom: 16,
   },
   recentPagesContainer: {
@@ -694,15 +840,16 @@ const styles = StyleSheet.create({
   // List section
   listHeader: {
     paddingVertical: 8,
-    paddingHorizontal: 16,
+
     marginTop: 8,
   },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "500",
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: 4,
+    paddingLeft: 16,
   },
   pagesList: {
     paddingBottom: 80,
@@ -771,6 +918,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,
+    minWidth: 200,
+    alignItems: "center",
   },
   createFirstButtonText: {
     color: "#FFFFFF",
@@ -812,5 +961,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500",
     marginLeft: 2,
+  },
+  syncStatusContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  syncStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  syncStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.05)",
+    alignSelf: "flex-start",
+  },
+  syncStatusText: {
+    fontSize: 12,
+    marginLeft: 6,
+  },
+  clearButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    marginLeft: 10,
+  },
+  clearButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "500",
+    marginLeft: 4,
+  },
+  emptyStateButtons: {
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
   },
 });

@@ -1,367 +1,229 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
+  TextInput,
   ActivityIndicator,
-  Modal,
-  FlatList,
-  Alert,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 
-// Array of common emojis for page icons
-const COMMON_EMOJIS = [
-  "📄",
-  "📝",
-  "📔",
-  "📕",
-  "📗",
-  "📘",
-  "📙",
-  "📚",
-  "📒",
-  "📋",
-  "📖",
-  "📑",
-  "🗒️",
-  "📰",
-  "🏷️",
-  "🔖",
-  "📌",
-  "📍",
-  "💼",
-  "🗂️",
-  "🗃️",
-  "🗄️",
-  "✏️",
-  "✒️",
-  "🖋️",
-  "🖊️",
-  "🖌️",
-  "🖍️",
-  "📐",
-  "📏",
-  "📊",
-  "📈",
-  "📉",
-  "🔍",
-  "🔎",
-  "💡",
-  "💻",
-  "🖥️",
-  "📱",
-  "⌨️",
-  "🖱️",
-  "🏠",
-  "🏢",
-  "🏫",
-  "🏭",
-  "🏛️",
-  "🏗️",
-  "🏘️",
-  "🏙️",
-  "🚗",
-  "✈️",
-  "🚀",
-  "🚁",
-  "⚙️",
-  "🔧",
-  "🔨",
-  "🛠️",
-  "⚡",
-  "🔋",
-  "⏱️",
-];
-
+/**
+ * PageHeader component - Displays the page title, icon, and navigation controls
+ */
 const PageHeader = ({
-  title,
+  title = "",
   icon,
   onTitleChange,
   onIconChange,
   onBackPress,
   onUndo,
   onRedo,
+  canUndo,
+  canRedo,
   isSaving,
   theme,
-  multilineTitle = true,
-  canUndo = true,
-  canRedo = true,
+  multilineTitle = false,
 }) => {
-  const [showIconPicker, setShowIconPicker] = useState(false);
+  // Use local state for the title input to avoid React Native TextInput issues
+  const [localTitle, setLocalTitle] = useState(title);
+  const [showSavingIndicator, setShowSavingIndicator] = useState(false);
 
-  // Handle icon selection
-  const handleIconSelect = (newIcon) => {
-    onIconChange(newIcon);
-    setShowIconPicker(false);
+  // Update local title when prop changes
+  if (title !== localTitle && title !== undefined) {
+    setLocalTitle(title);
+  }
+
+  // Handle text changes locally first, then propagate to parent
+  const handleTextChange = (text) => {
+    setLocalTitle(text);
+    if (onTitleChange) {
+      onTitleChange(text);
+    }
   };
 
-  // Icon picker modal
-  const renderIconPicker = () => {
-    return (
-      <Modal
-        visible={showIconPicker}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowIconPicker(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          accessible={true}
-          accessibilityRole="button"
-          accessibilityLabel="Close icon picker"
-          onPress={() => setShowIconPicker(false)}
-        >
-          <View
-            style={[
-              styles.iconPickerContainer,
-              { backgroundColor: theme.background },
-            ]}
-          >
-            <View style={styles.iconPickerHeader}>
-              <Text style={[styles.iconPickerTitle, { color: theme.text }]}>
-                Select Icon
-              </Text>
-              <TouchableOpacity onPress={() => setShowIconPicker(false)}>
-                <Ionicons name="close" size={24} color={theme.text} />
-              </TouchableOpacity>
-            </View>
-
-            <FlatList
-              data={COMMON_EMOJIS}
-              numColumns={8}
-              keyExtractor={(item, index) => `emoji-${index}`}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.emojiItem}
-                  onPress={() => handleIconSelect(item)}
-                >
-                  <Text style={styles.emoji}>{item}</Text>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </TouchableOpacity>
-      </Modal>
-    );
-  };
+  // Control the saving indicator with a slight delay to prevent flickering
+  useEffect(() => {
+    if (isSaving) {
+      setShowSavingIndicator(true);
+    } else {
+      // Add a small delay before hiding the indicator to prevent flickering
+      const timer = setTimeout(() => {
+        setShowSavingIndicator(false);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isSaving]);
 
   return (
-    <>
-      {/* Back button */}
-      <TouchableOpacity style={[styles.backButton]} onPress={onBackPress}>
-        <Ionicons name="arrow-back" size={24} color={theme.text} />
-      </TouchableOpacity>
-
-      {/* Undo/Redo buttons */}
-      <View style={styles.actionsContainer}>
+    <View style={styles.headerWrapper}>
+      {/* Top bar with back button and undo/redo */}
+      <View style={styles.topBar}>
+        {/* Back button */}
         <TouchableOpacity
-          style={[styles.actionButton, !canUndo && styles.disabledButton]}
-          onPress={onUndo}
-          disabled={!canUndo}
-          accessibilityLabel="Undo"
-          accessibilityRole="button"
+          style={[styles.backButton, { backgroundColor: theme.cardBackground }]}
+          onPress={onBackPress}
         >
-          <Ionicons
-            name="arrow-undo"
-            size={22}
-            color={canUndo ? theme.text : theme.secondaryText}
-          />
+          <Ionicons name="chevron-back" size={24} color={theme.text} />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, !canRedo && styles.disabledButton]}
-          onPress={onRedo}
-          disabled={!canRedo}
-          accessibilityLabel="Redo"
-          accessibilityRole="button"
-        >
-          <Ionicons
-            name="arrow-redo"
-            size={22}
-            color={canRedo ? theme.text : theme.secondaryText}
-          />
-        </TouchableOpacity>
-      </View>
 
-      {/* Save indicator */}
-      {isSaving && (
-        <View style={styles.savingIndicator}>
-          <ActivityIndicator size="small" color={theme.secondary} />
-          <Text style={[styles.savingText, { color: theme.secondaryText }]}>
-            Saving...
-          </Text>
-        </View>
-      )}
+        <View style={styles.rightControls}>
+          {/* Saving indicator */}
+          {showSavingIndicator && (
+            <View style={styles.savingIndicator}>
+              <ActivityIndicator size="small" color={theme.primary} />
+              <Text style={[styles.savingText, { color: theme.primary }]}>
+                Saving...
+              </Text>
+            </View>
+          )}
 
-      {/* Title area */}
-      <View style={styles.titleContainer}>
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={() => setShowIconPicker(true)}
-        >
-          <Text style={[styles.iconDisplay, { color: theme.text }]}>
-            {icon}
-          </Text>
-          <View
-            style={[styles.iconEditBadge, { backgroundColor: theme.primary }]}
-          >
-            <Ionicons name="pencil" size={10} color="#FFF" />
+          {/* Undo/Redo buttons */}
+          <View style={styles.historyButtons}>
+            <TouchableOpacity
+              style={[
+                styles.historyButton,
+                { backgroundColor: theme.cardBackground },
+                !canUndo && styles.disabledButton,
+              ]}
+              onPress={onUndo}
+              disabled={!canUndo}
+            >
+              <MaterialIcons
+                name="undo"
+                size={20}
+                color={canUndo ? theme.text : theme.secondaryText}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.historyButton,
+                { backgroundColor: theme.cardBackground },
+                !canRedo && styles.disabledButton,
+              ]}
+              onPress={onRedo}
+              disabled={!canRedo}
+            >
+              <MaterialIcons
+                name="redo"
+                size={20}
+                color={canRedo ? theme.text : theme.secondaryText}
+              />
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-
-        <TextInput
-          style={[
-            styles.titleInput,
-            {
-              color: theme.text,
-              borderBottomColor: `${theme.text}20`,
-            },
-          ]}
-          value={title}
-          onChangeText={onTitleChange}
-          placeholder="Note Title"
-          placeholderTextColor={theme.secondaryText || "#999"}
-          maxLength={100}
-          multiline={multilineTitle}
-          numberOfLines={multilineTitle ? 2 : 1}
-        />
+        </View>
       </View>
 
-      {/* Icon Picker Modal */}
-      {renderIconPicker()}
-    </>
+      {/* Title and icon section */}
+      <View style={styles.headerContainer}>
+        {/* Page icon */}
+        <TouchableOpacity
+          style={[styles.iconButton, { backgroundColor: theme.cardBackground }]}
+          onPress={onIconChange}
+        >
+          <Text style={styles.iconText}>{icon || "📄"}</Text>
+        </TouchableOpacity>
+
+        {/* Simple title input */}
+        <View
+          style={[
+            styles.titleInputContainer,
+            { backgroundColor: theme.cardBackground },
+          ]}
+        >
+          <TextInput
+            style={[styles.titleInput, { color: theme.text }]}
+            value={localTitle}
+            onChangeText={handleTextChange}
+            placeholder="Untitled"
+            placeholderTextColor={theme.secondaryText}
+            multiline={multilineTitle}
+            maxLength={100}
+          />
+        </View>
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  backButton: {
-    position: "absolute",
-    top: 20,
-    left: 15,
-    zIndex: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
+  headerWrapper: {
+    paddingTop: 5,
   },
-  actionsContainer: {
-    position: "absolute",
-    flexDirection: "row",
-    top: 20,
-    right: 15,
-    zIndex: 10,
-  },
-  actionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: 8,
-    backgroundColor: "rgba(0,0,0,0.05)",
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  savingIndicator: {
-    position: "absolute",
-    flexDirection: "row",
-    alignItems: "center",
-    top: 70,
-    right: 15,
-    zIndex: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: "rgba(0,0,0,0.1)",
-  },
-  savingText: {
-    marginLeft: 6,
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  titleContainer: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-    width: "100%",
-  },
-  iconButton: {
-    position: "relative",
-    width: 40,
-    height: 40,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-    marginTop: 8,
-  },
-  iconDisplay: {
-    fontSize: 24,
-  },
-  iconEditBadge: {
-    position: "absolute",
-    bottom: -3,
-    right: -3,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  titleInput: {
-    flex: 1,
-    fontSize: 32,
-    fontWeight: "bold",
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    textAlignVertical: "top",
-  },
-  // Icon picker styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  iconPickerContainer: {
-    width: "80%",
-    maxHeight: "70%",
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  iconPickerHeader: {
+  topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    paddingHorizontal: 10,
+    height: 50,
   },
-  iconPickerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
+  rightControls: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  emojiItem: {
-    width: "12.5%",
-    aspectRatio: 1,
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
-    padding: 8,
   },
-  emoji: {
-    fontSize: 24,
+  savingIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  savingText: {
+    marginLeft: 4,
+    fontSize: 12,
+  },
+  headerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 15,
+    paddingVertical: 5,
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  iconText: {
+    fontSize: 20,
+  },
+  titleInputContainer: {
+    flex: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  titleInput: {
+    fontSize: 28,
+    fontWeight: "600",
+    padding: 0,
+  },
+  multilineTitle: {
+    minHeight: 40,
+    maxHeight: 80,
+  },
+  historyButtons: {
+    flexDirection: "row",
+  },
+  historyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 6,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });
 

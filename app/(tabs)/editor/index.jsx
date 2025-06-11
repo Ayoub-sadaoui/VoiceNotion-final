@@ -16,6 +16,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import EditorWeb from "../../../components/Editor.web";
 import { useTheme } from "../../../utils/themeContext";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 // Array of available icons for notes
 const AVAILABLE_ICONS = [
@@ -98,6 +102,7 @@ export default function EditorScreen() {
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const insets = useSafeAreaInsets();
 
   // Create a ref to the editor component
   const editorRef = useRef(null);
@@ -218,15 +223,21 @@ export default function EditorScreen() {
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.background }]}
+      edges={["bottom"]}
+    >
       <TouchableOpacity
-        style={[styles.backButton, { backgroundColor: "transparent" }]}
+        style={[
+          styles.backButton,
+          { backgroundColor: "transparent", top: 12 + insets.top },
+        ]}
         onPress={handleGoBack}
       >
         <Ionicons name="arrow-back" size={24} color={theme.text} />
       </TouchableOpacity>
 
-      <View style={styles.titleContainer}>
+      <View style={[styles.titleContainer, { paddingTop: 60 + insets.top }]}>
         <TouchableOpacity
           style={[styles.iconButton, { backgroundColor: theme.surface }]}
           onPress={openIconPicker}
@@ -250,7 +261,7 @@ export default function EditorScreen() {
         />
       </View>
 
-      <View style={styles.editorContainer}>
+      <View style={[styles.editorContainer, { paddingBottom: insets.bottom }]}>
         <EditorWeb
           ref={editorRef}
           title={title}
@@ -262,7 +273,7 @@ export default function EditorScreen() {
       </View>
 
       {renderIconPickerModal()}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -274,7 +285,6 @@ const styles = StyleSheet.create({
   },
   backButton: {
     position: "absolute",
-    top: 12,
     left: 12,
     zIndex: 10,
     width: 40,
@@ -286,7 +296,6 @@ const styles = StyleSheet.create({
   titleContainer: {
     flexDirection: "row",
     alignItems: "center",
-    paddingTop: 60,
     paddingHorizontal: 20,
     paddingBottom: 10,
     width: "100%",

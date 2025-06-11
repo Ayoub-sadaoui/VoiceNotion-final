@@ -8,20 +8,60 @@ import {
   TouchableOpacity,
   ScrollView,
   Switch,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../../utils/themeContext";
+import { useAuth } from "../../../contexts/AuthContext";
+import { signOut } from "../../../services/supabaseService";
+import { syncPendingNotesWithSupabase } from "../../../services/noteService";
 import ScreenHeader from "../../../components/ScreenHeader";
 import { useRouter } from "expo-router";
 
 export default function ProfileScreen() {
   const { theme, isDark, toggleTheme } = useTheme();
+  const { user } = useAuth();
   const router = useRouter();
 
   // Handle logout
-  const handleLogout = () => {
-    // For now just log the action
-    console.log("User logged out");
+  const handleLogout = async () => {
+    Alert.alert("Log Out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log Out",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            // Sync any pending notes before logout
+            if (user) {
+              await syncPendingNotesWithSupabase(user.id);
+            }
+
+            // Perform logout
+            const { error } = await signOut();
+
+            if (error) {
+              throw error;
+            }
+
+            // Navigate to login
+            router.replace("/auth/login");
+          } catch (error) {
+            console.error("Logout error:", error);
+            Alert.alert("Error", "Failed to log out. Please try again.");
+          }
+        },
+      },
+    ]);
+  };
+
+  // Get initials for avatar
+  const getInitials = () => {
+    if (!user || !user.email) return "?";
+
+    // Use email if no user name
+    const email = user.email;
+    return email.substring(0, 2).toUpperCase();
   };
 
   const settingsItems = [
@@ -59,7 +99,7 @@ export default function ProfileScreen() {
       id: "about",
       icon: "information-circle-outline",
       title: "About",
-      screen: "about",
+      screen: "/profile/about",
     },
   ];
 
@@ -74,12 +114,14 @@ export default function ProfileScreen() {
         >
           <View style={styles.avatarContainer}>
             <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
-              <Text style={styles.avatarText}>JD</Text>
+              <Text style={styles.avatarText}>{getInitials()}</Text>
             </View>
           </View>
-          <Text style={[styles.userName, { color: theme.text }]}>John Doe</Text>
+          <Text style={[styles.userName, { color: theme.text }]}>
+            {user?.user_metadata?.full_name || "User"}
+          </Text>
           <Text style={[styles.userEmail, { color: theme.secondaryText }]}>
-            john.doe@example.com
+            {user?.email || "No email"}
           </Text>
         </View>
 
@@ -88,9 +130,7 @@ export default function ProfileScreen() {
             <TouchableOpacity
               key={item.id}
               style={[styles.settingsItem, { borderBottomColor: theme.border }]}
-              onPress={() =>
-                item.screen && router.push(`/profile/${item.screen}`)
-              }
+              onPress={() => item.screen && router.push(item.screen)}
             >
               <Ionicons name={item.icon} size={22} color={theme.icon} />
               <Text style={[styles.settingsItemText, { color: theme.text }]}>

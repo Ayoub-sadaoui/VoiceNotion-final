@@ -1,0 +1,51 @@
+{
+  "cli": {
+    "version": ">= 5.9.1"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "your-dev-supabase-url",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-dev-supabase-anon-key"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "your-staging-supabase-url",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-staging-supabase-anon-key"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "your-production-supabase-url",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-production-supabase-anon-key"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "your-apple-id@example.com",
+        "ascAppId": "your-app-store-connect-app-id",
+        "appleTeamId": "your-apple-team-id"
+      },
+      "android": {
+        "serviceAccountKeyPath": "path/to/service-account.json",
+        "track": "production"
+      }
+    }
+  },
+  "preview": {
+    "distribution": "internal",
+    "ios": {
+      "simulator": true
+    }
+  }
+}
