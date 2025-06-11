@@ -1,16 +1,17 @@
 /**
  * Page Storage Service
  *
- * Handles the storage, retrieval, and management of pages in local storage
- * Uses AsyncStorage for persistent storage on mobile devices
+ * Handles the storage, retrieval, and management of pages in Supabase
  */
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
-// Storage keys
-const KEYS = {
-  PAGES: "voicenotion_pages",
-};
+import { v4 as uuidv4 } from "uuid";
+import {
+  createNote,
+  updateNote,
+  deleteNote,
+  fetchSupabaseNotesOnly,
+} from "./noteService";
+import { supabase } from "./supabaseService";
 
 // Generate a unique ID for a page
 const generateId = () => {
@@ -26,81 +27,61 @@ const getTimestamp = () => Date.now();
 
 /**
  * Create a new page
- * @param {string} parentId - Parent page ID (null for root pages)
+ * @param {string|null} parentId - Parent page ID (null for root pages)
  * @param {string} title - Page title
- * @param {string} icon - Emoji icon for the page
- * @returns {Promise<Object>} - New page object
+ * @param {string} icon - Page icon
+ * @param {string|null} userId - User ID for authenticated users
+ * @returns {Promise<Object>} - Created page object
  */
 const createPage = async (
   parentId = null,
   title = "Untitled Page",
-  icon = "📄"
+  icon = "📄",
+  userId = null
 ) => {
   try {
-    const id = generateId();
-    const now = getTimestamp();
+    if (!userId) {
+      throw new Error("User not authenticated");
+    }
 
-    // Create proper initial content for the new page
-    const initialContent = JSON.stringify([
-      {
-        type: "heading",
-        props: {
-          textColor: "default",
-          backgroundColor: "default",
-          textAlignment: "left",
-          level: 1,
-        },
-        content: [
-          {
-            type: "text",
-            text: title || "Untitled Page",
-            styles: {},
-          },
-        ],
-        children: [],
-      },
-      {
-        type: "paragraph",
-        props: {
-          textColor: "default",
-          backgroundColor: "default",
-          textAlignment: "left",
-        },
-        content: [
-          {
-            type: "text",
-            text: "Start writing here...",
-            styles: {},
-          },
-        ],
-        children: [],
-      },
-    ]);
+    // Try to use uuidv4, but fall back to our own generateId if it fails
+    let id;
+    try {
+      id = uuidv4();
+    } catch (uuidError) {
+      console.warn(
+        "UUID generation failed, using fallback:",
+        uuidError.message
+      );
+      id = generateId();
+    }
 
-    // Create new page object
-    const newPage = {
+    const timestamp = getTimestamp();
+
+    // Create page object
+    const page = {
       id,
       parentId,
       title,
       icon,
-      contentJson: initialContent,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      contentJson: "[]", // Empty content array as string
     };
 
-    // Get existing pages
-    const existingPagesJson = await AsyncStorage.getItem(KEYS.PAGES);
-    const existingPages = existingPagesJson
-      ? JSON.parse(existingPagesJson)
-      : [];
+    // Create note in Supabase
+    const noteResult = await createNote(userId, {
+      id: page.id,
+      title: page.title,
+      content: [], // Empty content array for Supabase
+      parentId: page.parentId,
+    });
 
-    // Add new page
-    const updatedPages = [...existingPages, newPage];
+    if (!noteResult.success) {
+      throw new Error("Failed to create note in Supabase");
+    }
 
-    // Save to storage
-    await AsyncStorage.setItem(KEYS.PAGES, JSON.stringify(updatedPages));
-
-    return newPage;
+    return page;
   } catch (error) {
     console.error("Error creating page:", error);
     throw new Error("Failed to create page");
@@ -110,17 +91,19 @@ const createPage = async (
 /**
  * Get a page by ID
  * @param {string} id - Page ID to retrieve
+ * @param {string|null} userId - User ID for authenticated users
  * @returns {Promise<Object|null>} - Page object or null if not found
  */
-const getPageById = async (id) => {
+const getPageById = async (id, userId) => {
   try {
-    if (!id) return null;
+    if (!id || !userId) return null;
 
-    const pagesJson = await AsyncStorage.getItem(KEYS.PAGES);
-    if (!pagesJson) return null;
+    // Fetch the note from Supabase through the noteService
+    const result = await fetchSupabaseNotesOnly(userId);
+    if (!result.success) return null;
 
-    const pages = JSON.parse(pagesJson);
-    return pages.find((page) => page.id === id) || null;
+    // Find the note with the matching ID
+    return result.notes.find((note) => note.id === id) || null;
   } catch (error) {
     console.error("Error getting page by ID:", error);
     return null;
@@ -130,17 +113,14 @@ const getPageById = async (id) => {
 /**
  * Save (update) an existing page
  * @param {Object} page - Updated page object
+ * @param {string|null} userId - User ID for authenticated users
  * @returns {Promise<Object>} - Saved page object
  */
-const savePage = async (page) => {
+const savePage = async (page, userId = null) => {
   try {
-    if (!page || !page.id) {
-      throw new Error("Invalid page object");
+    if (!page || !page.id || !userId) {
+      throw new Error("Invalid page object or user not authenticated");
     }
-
-    // Get existing pages
-    const pagesJson = await AsyncStorage.getItem(KEYS.PAGES);
-    const pages = pagesJson ? JSON.parse(pagesJson) : [];
 
     // Update updatedAt timestamp
     const updatedPage = {
@@ -148,14 +128,58 @@ const savePage = async (page) => {
       updatedAt: getTimestamp(),
     };
 
-    // Replace page in array
-    const updatedPages = pages.map((p) =>
-      p.id === updatedPage.id ? updatedPage : p
+    console.log(
+      `Saving page to Supabase: ID=${page.id}, Title="${page.title}", Icon=${page.icon}`
     );
 
-    // Save to storage
-    await AsyncStorage.setItem(KEYS.PAGES, JSON.stringify(updatedPages));
+    // Parse contentJson if it exists, otherwise use content or empty array
+    let contentToSave = [];
 
+    if (page.contentJson) {
+      try {
+        contentToSave = JSON.parse(page.contentJson);
+        if (!Array.isArray(contentToSave)) {
+          console.warn(
+            "contentJson is not an array, converting to array format"
+          );
+          contentToSave = [contentToSave];
+        }
+      } catch (err) {
+        console.warn("Failed to parse contentJson:", err);
+        // Fallback to content field or empty array
+        contentToSave = Array.isArray(page.content) ? page.content : [];
+      }
+    } else if (page.content) {
+      contentToSave = Array.isArray(page.content)
+        ? page.content
+        : [page.content];
+    }
+
+    // Prepare update data with all necessary fields
+    const updateData = {
+      title: page.title,
+      content: contentToSave,
+      parentId: page.parentId,
+      icon: page.icon,
+    };
+
+    console.log(
+      "Updating note in Supabase with data:",
+      JSON.stringify({
+        title: updateData.title,
+        icon: updateData.icon,
+        contentBlockCount: contentToSave.length,
+      })
+    );
+
+    const noteResult = await updateNote(userId, page.id, updateData);
+
+    if (!noteResult.success) {
+      console.warn("Failed to update note in Supabase:", noteResult.error);
+      throw new Error("Failed to save page to Supabase");
+    }
+
+    console.log("Page successfully saved to Supabase");
     return updatedPage;
   } catch (error) {
     console.error("Error saving page:", error);
@@ -166,28 +190,31 @@ const savePage = async (page) => {
 /**
  * Delete a page and its children
  * @param {string} id - ID of the page to delete
+ * @param {string|null} userId - User ID for authenticated users
  * @returns {Promise<boolean>} - Success status
  */
-const deletePage = async (id) => {
+const deletePage = async (id, userId = null) => {
   try {
-    if (!id) return false;
+    if (!id || !userId) return false;
 
-    // Get existing pages
-    const pagesJson = await AsyncStorage.getItem(KEYS.PAGES);
-    if (!pagesJson) return false;
-
-    const pages = JSON.parse(pagesJson);
+    // Get all notes from Supabase
+    const result = await fetchSupabaseNotesOnly(userId);
+    if (!result.success) return false;
 
     // Find the page to be deleted and all its descendants
+    const pages = result.notes;
     const idsToDelete = collectPageAndDescendantIds(pages, id);
 
-    // Filter out the pages to delete
-    const remainingPages = pages.filter(
-      (page) => !idsToDelete.includes(page.id)
-    );
-
-    // Save the remaining pages
-    await AsyncStorage.setItem(KEYS.PAGES, JSON.stringify(remainingPages));
+    // Delete notes in Supabase
+    for (const pageId of idsToDelete) {
+      const deleteResult = await deleteNote(userId, pageId);
+      if (!deleteResult.success) {
+        console.warn(
+          `Failed to delete note ${pageId} in Supabase:`,
+          deleteResult.error
+        );
+      }
+    }
 
     return true;
   } catch (error) {
@@ -220,13 +247,24 @@ const collectPageAndDescendantIds = (pages, rootId) => {
 };
 
 /**
- * Load all pages
- * @returns {Promise<Array>} - Array of all pages
+ * Load all pages from Supabase
+ * @param {string|null} userId - User ID for authenticated users
+ * @returns {Promise<Array>} - Array of page objects
  */
-const loadAllPages = async () => {
+const loadAllPages = async (userId = null) => {
   try {
-    const pagesJson = await AsyncStorage.getItem(KEYS.PAGES);
-    return pagesJson ? JSON.parse(pagesJson) : [];
+    if (!userId) {
+      return [];
+    }
+
+    // Fetch notes from Supabase
+    const result = await fetchSupabaseNotesOnly(userId);
+
+    if (result.success) {
+      return result.notes;
+    }
+
+    return [];
   } catch (error) {
     console.error("Error loading all pages:", error);
     return [];
@@ -234,12 +272,20 @@ const loadAllPages = async () => {
 };
 
 /**
- * Get root pages (pages with no parent)
- * @returns {Promise<Array>} - Array of root pages
+ * Get root pages (pages without a parent)
+ * @param {string|null} userId - User ID for authenticated users
+ * @returns {Promise<Array>} - Array of root page objects
  */
-const getRootPages = async () => {
+const getRootPages = async (userId = null) => {
   try {
-    const pages = await loadAllPages();
+    if (!userId) {
+      return [];
+    }
+
+    // Fetch all pages
+    const pages = await loadAllPages(userId);
+
+    // Filter for root pages (no parentId)
     return pages.filter((page) => !page.parentId);
   } catch (error) {
     console.error("Error getting root pages:", error);
@@ -250,13 +296,19 @@ const getRootPages = async () => {
 /**
  * Get child pages of a parent page
  * @param {string} parentId - Parent page ID
- * @returns {Promise<Array>} - Array of child pages
+ * @param {string|null} userId - User ID for authenticated users
+ * @returns {Promise<Array>} - Array of child page objects
  */
-const getChildPages = async (parentId) => {
+const getChildPages = async (parentId, userId = null) => {
   try {
-    if (!parentId) return [];
+    if (!parentId || !userId) {
+      return [];
+    }
 
-    const pages = await loadAllPages();
+    // Fetch all pages
+    const pages = await loadAllPages(userId);
+
+    // Filter for children of the specified parent
     return pages.filter((page) => page.parentId === parentId);
   } catch (error) {
     console.error("Error getting child pages:", error);
@@ -265,28 +317,61 @@ const getChildPages = async (parentId) => {
 };
 
 /**
- * Create test pages for development/testing
+ * Create test pages for debugging
+ * @param {string|null} userId - User ID for authenticated users
  * @returns {Promise<boolean>} - Success status
  */
-const createTestPages = async () => {
+const createTestPages = async (userId = null) => {
   try {
-    // Check if we already have pages
-    const existingPages = await loadAllPages();
-    if (existingPages.length > 0) {
-      console.log("Test pages not created: Pages already exist");
+    if (!userId) {
+      console.log("User not authenticated, skipping test page creation");
       return false;
     }
 
-    // Create root page
-    const rootPage = await createPage(null, "Welcome to VoiceNotion", "📝");
+    // Check if test pages have already been created for this user
+    const { data: existingPages, error } = await supabase
+      .from("notes")
+      .select("id")
+      .eq("user_id", userId)
+      .limit(1);
+
+    if (error) {
+      console.error("Error checking for existing pages:", error);
+      return false;
+    }
+
+    // If user already has pages, don't create test pages
+    if (existingPages && existingPages.length > 0) {
+      console.log("User already has pages, skipping test page creation");
+      return false;
+    }
+
+    console.log("Creating test pages...");
+
+    // Create a root page
+    const rootPage = await createPage(null, "Getting Started", "📚", userId);
 
     // Create some child pages
-    await createPage(rootPage.id, "Getting Started", "🚀");
-    const notesPage = await createPage(rootPage.id, "My Notes", "📒");
+    const welcomePage = await createPage(
+      rootPage.id,
+      "Welcome to VoiceNotion",
+      "👋",
+      userId
+    );
 
-    // Create some grandchild pages
-    await createPage(notesPage.id, "Work Notes", "💼");
-    await createPage(notesPage.id, "Personal Notes", "🏠");
+    const voiceCommandsPage = await createPage(
+      rootPage.id,
+      "Voice Commands",
+      "🎤",
+      userId
+    );
+
+    const featuresPage = await createPage(
+      rootPage.id,
+      "Key Features",
+      "✨",
+      userId
+    );
 
     console.log("Test pages created successfully");
     return true;
@@ -296,8 +381,7 @@ const createTestPages = async () => {
   }
 };
 
-// Export all functions
-const pageStorageService = {
+export default {
   createPage,
   getPageById,
   savePage,
@@ -307,5 +391,3 @@ const pageStorageService = {
   getChildPages,
   createTestPages,
 };
-
-export default pageStorageService;

@@ -17,7 +17,7 @@ const ToolbarButton = ({ iconType, onPress, isActive, tooltip }) => {
     }
   } catch (error) {
     // Theme context not available, use fallback values
-    console.log("Theme context not available, using fallback values");
+    // console.log("Theme context not available, using fallback values");
   }
 
   const activeColor = theme.accentColor || "#007AFF";
@@ -61,7 +61,7 @@ const KeyboardToolbar = ({
     isDark = themeContext.isDark || isDark;
   } catch (error) {
     // Theme context not available, use fallback values
-    console.log("Theme context not available, using fallback values");
+    // console.log("Theme context not available, using fallback values");
   }
 
   // State for tracking button visibility

@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../utils/themeContext";
 import { Platform, View, StyleSheet, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import ProtectedRoute from "../../components/ProtectedRoute";
 
 export default function TabLayout() {
   const { theme } = useTheme();
@@ -23,68 +24,70 @@ export default function TabLayout() {
   };
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: theme.primary,
-        tabBarInactiveTintColor: theme.secondaryText,
-        tabBarStyle: {
-          backgroundColor: theme.background,
-          borderTopColor: theme.border,
-          borderTopWidth: 1,
-          paddingVertical: 10,
-          height:
-            Platform.OS === "ios" ? 80 + insets.bottom : 60 + insets.bottom,
-          paddingBottom:
-            Platform.OS === "ios" ? 30 + insets.bottom : 10 + insets.bottom,
-        },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: "500",
-          marginTop: 4,
-        },
-        headerShown: false,
-      }}
-    >
-      <Tabs.Screen
-        name="home/index"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color, focused }) =>
-            renderTabIcon("home", color, focused),
-        }}
-      />
-
-      <Tabs.Screen
-        name="editor/index"
-        options={{
-          title: "Editor",
-          headerShown: false,
+    <ProtectedRoute>
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: theme.primary,
+          tabBarInactiveTintColor: theme.secondaryText,
           tabBarStyle: {
-            display: "none",
+            backgroundColor: theme.background,
+            borderTopColor: theme.border,
+            borderTopWidth: 1,
+            paddingVertical: 10,
+            height:
+              Platform.OS === "ios" ? 80 + insets.bottom : 60 + insets.bottom,
+            paddingBottom:
+              Platform.OS === "ios" ? 30 + insets.bottom : 10 + insets.bottom,
           },
-          tabBarIcon: ({ color, focused }) =>
-            renderTabIcon("document-text", color, focused),
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontWeight: "500",
+            marginTop: 4,
+          },
+          headerShown: false,
         }}
-      />
+      >
+        <Tabs.Screen
+          name="home/index"
+          options={{
+            title: "Home",
+            tabBarIcon: ({ color, focused }) =>
+              renderTabIcon("home", color, focused),
+          }}
+        />
 
-      <Tabs.Screen
-        name="search/index"
-        options={{
-          title: "Search",
-          tabBarIcon: ({ color, focused }) =>
-            renderTabIcon("search", color, focused),
-        }}
-      />
+        <Tabs.Screen
+          name="editor/index"
+          options={{
+            title: "Editor",
+            headerShown: false,
+            tabBarStyle: {
+              display: "none",
+            },
+            tabBarIcon: ({ color, focused }) =>
+              renderTabIcon("document-text", color, focused),
+          }}
+        />
 
-      <Tabs.Screen
-        name="profile/index"
-        options={{
-          title: "Profile",
-          tabBarIcon: ({ color, focused }) =>
-            renderTabIcon("person", color, focused),
-        }}
-      />
-    </Tabs>
+        <Tabs.Screen
+          name="search/index"
+          options={{
+            title: "Search",
+            tabBarIcon: ({ color, focused }) =>
+              renderTabIcon("search", color, focused),
+          }}
+        />
+
+        <Tabs.Screen
+          name="profile/index"
+          options={{
+            title: "Profile",
+            tabBarIcon: ({ color, focused }) =>
+              renderTabIcon("person", color, focused),
+          }}
+        />
+      </Tabs>
+    </ProtectedRoute>
   );
 }
 

@@ -1,197 +1,240 @@
 /**
- * Utility functions for block operations in the editor
+ * Utility functions for block operations
  */
 
 /**
- * Validates if a block has the correct structure for BlockNote
- * @param {Object} block - The block to validate
- * @returns {boolean} - Whether the block has a valid structure
+ * Validate a block format to ensure it has required properties
+ * @param {Object} block - Block to validate
+ * @returns {boolean} - Whether the block is valid
  */
 export const validateBlockFormat = (block) => {
+  // Block must be an object
   if (!block || typeof block !== "object") {
-    console.error("Invalid block: not an object");
+    console.error("Block is not an object");
     return false;
   }
 
-  // Check required fields
-  if (!block.type || !block.props || !Array.isArray(block.children)) {
-    console.error(
-      "Block missing required fields (type, props, or children array)"
-    );
+  // Block must have a type
+  if (!block.type || typeof block.type !== "string") {
+    console.error("Block is missing type or type is not a string");
     return false;
   }
 
-  // Special validation for pageLink blocks
+  // Special handling for pageLink blocks
   if (block.type === "pageLink") {
-    // Check required props
-    if (!block.props.pageId || !block.props.pageTitle) {
-      console.error(
-        "PageLink block missing required props (pageId or pageTitle)"
-      );
+    // PageLink blocks must have props with pageId
+    if (!block.props || !block.props.pageId) {
+      console.error("PageLink block is missing props.pageId");
       return false;
     }
 
-    // PageLinkBlock requires content: "none" which means empty content array
-    if (!Array.isArray(block.content) || block.content.length !== 0) {
-      console.error("PageLink blocks must have empty content array");
-      return false;
+    // PageLink blocks should have empty content array
+    if (!Array.isArray(block.content)) {
+      block.content = [];
     }
 
     return true;
   }
 
-  // For non-pageLink blocks, check content array
-  if (!Array.isArray(block.content)) {
-    console.error("Block content must be an array");
+  // All other block types
+
+  // Block must have props
+  if (!block.props || typeof block.props !== "object") {
+    console.error("Block is missing props or props is not an object");
     return false;
   }
 
-  // Standard validation for other block types
-  return (
-    block.content.length > 0 &&
-    block.content.every(
-      (item) =>
-        item &&
-        typeof item.type === "string" &&
-        typeof item.text === "string" &&
-        typeof item.styles === "object"
-    )
-  );
+  // Block must have content array
+  if (!Array.isArray(block.content)) {
+    console.error("Block content is not an array");
+    return false;
+  }
+
+  // Block must have children array
+  if (!Array.isArray(block.children)) {
+    console.error("Block children is not an array");
+    return false;
+  }
+
+  // Additional validation for specific block types
+  switch (block.type) {
+    case "paragraph":
+      // No additional validation needed
+      break;
+    case "heading":
+      // Heading must have a level
+      if (!block.props.level || typeof block.props.level !== "number") {
+        console.error("Heading block is missing props.level");
+        return false;
+      }
+      break;
+    case "bulletListItem":
+    case "numberedListItem":
+      // No additional validation needed
+      break;
+    case "image":
+      // Image must have a url
+      if (!block.props.url || typeof block.props.url !== "string") {
+        console.error("Image block is missing props.url");
+        return false;
+      }
+      break;
+    case "codeBlock":
+      // Code block should have a language
+      if (!block.props.language) {
+        block.props.language = "plaintext";
+      }
+      break;
+    default:
+      // For other block types, no additional validation
+      break;
+  }
+
+  return true;
 };
 
 /**
- * Delete specific blocks from editor content based on their indices
- * @param {Array} editorContent - The current editor content with blocks
- * @param {Array} targetIndices - Array of indices of blocks to delete (0-based)
- * @returns {Array} - The updated editor content with blocks removed
+ * Create a new block with the specified type and content
+ * @param {string} type - Block type
+ * @param {string} content - Block content text
+ * @param {Object} props - Block properties
+ * @returns {Object} - Created block
  */
-export const deleteBlocksByIndices = (editorContent, targetIndices) => {
-  if (!editorContent || !Array.isArray(editorContent)) {
-    console.error("Invalid editor content");
-    return editorContent;
-  }
+export const createBlock = (type, content, props = {}) => {
+  // Default props for all block types
+  const defaultProps = {
+    textColor: "default",
+    backgroundColor: "default",
+    textAlignment: "left",
+  };
 
-  if (
-    !targetIndices ||
-    !Array.isArray(targetIndices) ||
-    targetIndices.length === 0
-  ) {
-    console.warn("No target indices provided for deletion");
-    return editorContent;
-  }
+  // Merge default props with provided props
+  const mergedProps = { ...defaultProps, ...props };
 
-  // Sort indices in descending order to avoid index shifting during removal
-  const sortedIndices = [...targetIndices].sort((a, b) => b - a);
+  // Create content array with text
+  const contentArray = content
+    ? [
+        {
+          type: "text",
+          text: content,
+          styles: {},
+        },
+      ]
+    : [];
 
-  // Create a copy of the editor content
-  const updatedContent = [...editorContent];
-
-  // Remove blocks from the sorted indices (back to front)
-  for (const index of sortedIndices) {
-    if (index >= 0 && index < updatedContent.length) {
-      updatedContent.splice(index, 1);
-    } else {
-      console.warn(`Invalid block index for deletion: ${index}`);
-    }
-  }
-
-  return updatedContent;
+  // Create the block
+  return {
+    type,
+    props: mergedProps,
+    content: contentArray,
+    children: [],
+  };
 };
 
 /**
- * Delete blocks from storage
- * @param {Object} page - The current page object
- * @param {Array} blockIds - Array of block IDs to delete
- * @param {Function} savePage - Function to save the page
- * @returns {Promise<Object>} - Promise resolving to object with updated page and content
+ * Find blocks by type in content
+ * @param {Array} content - Content to search
+ * @param {string} type - Block type to find
+ * @returns {Array} - Found blocks
  */
-export const deleteBlocksFromStorage = async (page, blockIds, savePage) => {
-  if (!page || !Array.isArray(blockIds) || blockIds.length === 0) {
-    console.error("Invalid parameters for deleteBlocksFromStorage");
+export const findBlocksByType = (content, type) => {
+  if (!Array.isArray(content) || !type) {
+    return [];
+  }
+
+  return content.filter((block) => block.type === type);
+};
+
+/**
+ * Find blocks by ID in content
+ * @param {Array} content - Content to search
+ * @param {string} id - Block ID to find
+ * @returns {Object|null} - Found block or null
+ */
+export const findBlockById = (content, id) => {
+  if (!Array.isArray(content) || !id) {
     return null;
   }
 
-  try {
-    // Parse the current content
-    const contentJson = page.contentJson || "[]";
-    let content;
-
-    try {
-      content = JSON.parse(contentJson);
-    } catch (err) {
-      console.error("Error parsing content JSON:", err);
-      return null;
+  for (const block of content) {
+    if (block.id === id) {
+      return block;
     }
 
-    if (!Array.isArray(content)) {
-      console.error("Content is not an array");
-      return null;
+    // Check children recursively
+    if (Array.isArray(block.children) && block.children.length > 0) {
+      const found = findBlockById(block.children, id);
+      if (found) {
+        return found;
+      }
     }
-
-    console.log(
-      `Attempting to delete ${blockIds.length} blocks from content with ${content.length} blocks`
-    );
-
-    // Create a deep copy of the content to avoid mutation issues
-    const updatedContent = JSON.parse(JSON.stringify(content));
-
-    // Helper function to recursively remove blocks by ID
-    const removeBlocksById = (blocks, idsToRemove) => {
-      // Filter out blocks with IDs in the idsToRemove array
-      return blocks.filter((block) => {
-        // Check if this block should be removed
-        const shouldRemove = idsToRemove.includes(block.id);
-
-        // Log the block being checked
-        if (shouldRemove) {
-          console.log(`Removing block with ID: ${block.id}`);
-        }
-
-        // If the block has children, recursively filter them too
-        if (
-          block.children &&
-          Array.isArray(block.children) &&
-          block.children.length > 0
-        ) {
-          block.children = removeBlocksById(block.children, idsToRemove);
-        }
-
-        // Keep the block if it shouldn't be removed
-        return !shouldRemove;
-      });
-    };
-
-    // Remove the blocks
-    const filteredContent = removeBlocksById(updatedContent, blockIds);
-
-    // Log the result
-    console.log(
-      `Content reduced from ${content.length} to ${filteredContent.length} top-level blocks`
-    );
-
-    // Create updated page object
-    const updatedPage = {
-      ...page,
-      contentJson: JSON.stringify(filteredContent),
-      updatedAt: Date.now(),
-    };
-
-    // Save the page
-    const savedPage = await savePage(updatedPage);
-
-    // Return the updated page and content
-    return {
-      page: savedPage,
-      content: filteredContent,
-    };
-  } catch (error) {
-    console.error("Error in deleteBlocksFromStorage:", error);
-    return null;
   }
+
+  return null;
+};
+
+/**
+ * Extract text content from a block
+ * @param {Object} block - Block to extract text from
+ * @returns {string} - Extracted text
+ */
+export const extractTextFromBlock = (block) => {
+  if (!block || !Array.isArray(block.content)) {
+    return "";
+  }
+
+  return block.content
+    .filter((item) => item.type === "text")
+    .map((item) => item.text)
+    .join("");
+};
+
+/**
+ * Extract all text content from blocks
+ * @param {Array} blocks - Blocks to extract text from
+ * @returns {string} - Extracted text
+ */
+export const extractAllText = (blocks) => {
+  if (!Array.isArray(blocks)) {
+    return "";
+  }
+
+  return blocks.map((block) => extractTextFromBlock(block)).join("\n");
+};
+
+/**
+ * Clean up invalid page links in content
+ * @param {Array} content - Content to clean
+ * @param {Array} validPageIds - Valid page IDs
+ * @returns {Array} - Cleaned content
+ */
+export const cleanInvalidPageLinks = (content, validPageIds) => {
+  if (!Array.isArray(content)) {
+    return content;
+  }
+
+  // Create a Set for faster lookups
+  const validIds = new Set(validPageIds);
+
+  return content.filter((block) => {
+    // Keep non-pageLink blocks
+    if (block.type !== "pageLink") {
+      return true;
+    }
+
+    // Check if the pageLink has a valid pageId
+    return (
+      block.props && block.props.pageId && validIds.has(block.props.pageId)
+    );
+  });
 };
 
 export default {
   validateBlockFormat,
-  deleteBlocksByIndices,
-  deleteBlocksFromStorage,
+  createBlock,
+  findBlocksByType,
+  findBlockById,
+  extractTextFromBlock,
+  extractAllText,
+  cleanInvalidPageLinks,
 };

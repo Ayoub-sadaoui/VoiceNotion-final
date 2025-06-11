@@ -9,6 +9,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Animated } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Toast from "react-native-toast-message";
+import { AuthProvider } from "../contexts/AuthContext";
 
 // Prevent the splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -63,9 +64,11 @@ function StackNavigator() {
 
 function RootLayoutNav() {
   return (
-    <ThemeProvider>
-      <StackNavigator />
-    </ThemeProvider>
+    <AuthProvider>
+      <ThemeProvider>
+        <StackNavigator />
+      </ThemeProvider>
+    </AuthProvider>
   );
 }
 
