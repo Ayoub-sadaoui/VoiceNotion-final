@@ -53,6 +53,17 @@ const BlockNoteEditor = forwardRef((props, ref) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pageToDelete, setPageToDelete] = useState(null);
 
+  // Apply theme class to document when theme changes
+  useEffect(() => {
+    // Add theme class to document body
+    if (typeof document !== "undefined") {
+      // Ensure theme is a string
+      const themeString = typeof theme === "string" ? theme : "light";
+      document.body.classList.remove("theme-light", "theme-dark");
+      document.body.classList.add(`theme-${themeString}`);
+    }
+  }, [theme]);
+
   /**
    * Helper function to safely access the editor's internal storage
    *
@@ -824,7 +835,9 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         display: "flex",
         flexDirection: "column",
       }}
-      className="editor-scroll-container"
+      className={`editor-scroll-container theme-${
+        typeof theme === "string" ? theme : "light"
+      }`}
     >
       <BlockNoteView
         editor={editor}
@@ -841,7 +854,9 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         formattingToolbar={false}
         htmlAttributes={{
           editor: {
-            class: "blocknote-editor custom-editor",
+            class: `blocknote-editor custom-editor theme-${
+              typeof theme === "string" ? theme : "light"
+            }`,
             style:
               "height: 100%; min-height: 150px; width: 100%; user-select: text; -webkit-touch-callout: none;",
           },
@@ -858,6 +873,7 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         onCreatePageLink={handleCreatePageLink}
         keyboardHeight={keyboardHeight}
         isKeyboardVisible={isKeyboardVisible}
+        theme={typeof theme === "string" ? theme : "light"}
       />
 
       <ConfirmDialog

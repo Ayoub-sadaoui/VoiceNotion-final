@@ -35,6 +35,7 @@ import {
   handleInsertContentCommand,
   handleCreatePageCommand,
   handleApplyFormattingCommand,
+  handleModifyBlockCommand,
 } from "../../utils/voiceCommandHandlers";
 
 // Import components
@@ -58,7 +59,7 @@ const NoteScreen = () => {
   const pageId = id;
 
   // Theme and insets
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
 
   // Auth context
@@ -536,6 +537,22 @@ const NoteScreen = () => {
             );
             break;
 
+          case "MODIFY_BLOCK":
+            await handleModifyBlockCommand(
+              commandResult,
+              editorContent,
+              initialContent,
+              editorRef,
+              setEditorContent,
+              setInitialContent,
+              currentPage,
+              storageSavePage,
+              setCurrentPage,
+              setForceRefresh,
+              setIsSaving
+            );
+            break;
+
           case "UNDO":
             await handleUndoCommand(
               commandResult,
@@ -661,6 +678,7 @@ const NoteScreen = () => {
         recentTranscription={recentTranscription}
         forceRefresh={forceRefresh}
         theme={theme}
+        isDark={isDark}
       />
 
       {/* Voice recorder */}

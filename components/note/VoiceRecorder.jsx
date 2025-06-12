@@ -32,6 +32,10 @@ const VoiceRecorder = ({
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [recording, setRecording] = useState(null);
   const [transcription, setTranscription] = useState("");
+  const [isAIMode, setIsAIMode] = useState(false);
+  const [isLongPressDetected, setIsLongPressDetected] = useState(false);
+  const longPressTimeout = useRef(null);
+  const pressStartTime = useRef(null);
 
   // Animation
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -65,6 +69,18 @@ const VoiceRecorder = ({
     };
   }, [isRecording, pulseAnim]);
 
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimeout.current) {
+        clearTimeout(longPressTimeout.current);
+      }
+      if (recordingInterval.current) {
+        clearInterval(recordingInterval.current);
+      }
+    };
+  }, []);
+
   // Request permissions for audio recording
   const requestPermissions = async () => {
     try {
@@ -90,6 +106,47 @@ const VoiceRecorder = ({
         visibilityTime: 3000,
       });
       return false;
+    }
+  };
+
+  // Handle press start for long press detection
+  const handlePressIn = () => {
+    pressStartTime.current = Date.now();
+    setIsLongPressDetected(false);
+
+    longPressTimeout.current = setTimeout(() => {
+      // Long press detected (800ms)
+      setIsLongPressDetected(true);
+      setIsAIMode(true);
+      if (Platform.OS === "ios") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      }
+      Toast.show({
+        type: "info",
+        text1: "AI Question Mode",
+        text2: "Ask a question to get an AI answer",
+        visibilityTime: 1500,
+      });
+      startRecording();
+    }, 800);
+  };
+
+  // Handle press out to cancel long press if needed
+  const handlePressOut = () => {
+    if (longPressTimeout.current) {
+      clearTimeout(longPressTimeout.current);
+      longPressTimeout.current = null;
+    }
+
+    // If this was a short press (not a long press) and we're not already recording
+    if (
+      !isLongPressDetected &&
+      !isRecording &&
+      Date.now() - pressStartTime.current < 800
+    ) {
+      // Start normal recording mode
+      setIsAIMode(false);
+      startRecording();
     }
   };
 
@@ -125,7 +182,9 @@ const VoiceRecorder = ({
         setRecordingDuration((prev) => prev + 1);
       }, 1000);
 
-      console.log("Recording started");
+      console.log(
+        `Recording started in ${isAIMode ? "AI Question" : "Command"} mode`
+      );
     } catch (error) {
       console.error("Failed to start recording", error);
       Toast.show({
@@ -134,6 +193,8 @@ const VoiceRecorder = ({
         text2: "Failed to start recording",
         visibilityTime: 2000,
       });
+      setIsAIMode(false);
+      setIsLongPressDetected(false);
     }
   };
 
@@ -163,8 +224,12 @@ const VoiceRecorder = ({
         throw new Error("No recording URI available");
       }
 
+      // Reset recording state before processing to avoid memory leaks
+      const recordingToProcess = uri;
+      setRecording(null);
+
       // Process the recording
-      await processRecording(uri);
+      await processRecording(recordingToProcess);
     } catch (error) {
       console.error("Failed to stop recording", error);
       setIsProcessing(false);
@@ -174,8 +239,11 @@ const VoiceRecorder = ({
         text2: "Failed to process recording",
         visibilityTime: 2000,
       });
-    } finally {
+
+      // Ensure recording is reset even on error
       setRecording(null);
+      setIsAIMode(false);
+      setIsLongPressDetected(false);
     }
   };
 
@@ -185,26 +253,92 @@ const VoiceRecorder = ({
       setIsProcessing(true);
 
       // Transcribe the audio using Gemini API
+      console.log("Sending audio for transcription:", uri);
       const result = await geminiService.transcribeAudioWithGemini(uri);
 
       if (!result || !result.success) {
-        throw new Error("Transcription failed");
+        console.error(
+          "Transcription failed:",
+          result?.error || "Unknown error"
+        );
+        throw new Error(result?.error || "Transcription failed");
       }
 
       setTranscription(result.transcription);
-      console.log("Transcription:", result.transcription);
+      console.log("Transcription successful:", result.transcription);
 
-      // Process the transcription to extract commands
-      const commandResult = await geminiService.processCommandWithGemini(
-        result.transcription,
-        editorContent
-      );
+      Toast.show({
+        type: "success",
+        text1: "Transcription Success",
+        text2: isAIMode
+          ? "Processing your question..."
+          : "Processing your command...",
+        visibilityTime: 1500,
+      });
 
-      if (!commandResult || !commandResult.success) {
-        throw new Error("Command processing failed");
+      let commandResult;
+
+      if (isAIMode) {
+        // In AI mode, directly use askGeminiAI instead of processCommandWithGemini
+        console.log("Processing direct AI question:", result.transcription);
+        const aiResponse = await geminiService.askGeminiAI(
+          result.transcription,
+          editorContent
+        );
+
+        if (aiResponse.success && aiResponse.blocks) {
+          console.log("Got AI answer with blocks:", aiResponse.blocks.length);
+          commandResult = {
+            success: true,
+            action: "INSERT_AI_ANSWER",
+            blocks: aiResponse.blocks,
+            rawCommand: result.transcription,
+            rawTranscription: result.transcription,
+          };
+        } else {
+          console.error("Failed to get AI answer:", aiResponse.message);
+          throw new Error(
+            aiResponse.message || "AI couldn't answer that question"
+          );
+        }
+      } else {
+        // Normal command processing
+        commandResult = await geminiService.processCommandWithGemini(
+          result.transcription,
+          editorContent
+        );
       }
 
-      console.log("Command result:", commandResult);
+      if (!commandResult || !commandResult.success) {
+        console.error(
+          "Command processing failed:",
+          commandResult?.error || "Unknown error"
+        );
+
+        // If we have transcription but command processing failed,
+        // we can still show the transcription to the user
+        if (result.transcription) {
+          Toast.show({
+            type: "info",
+            text1: "Command Not Recognized",
+            text2: "Adding text as regular content",
+            visibilityTime: 2000,
+          });
+
+          // Pass a simple insert content command instead
+          onCommandProcessed({
+            success: true,
+            action: "INSERT_CONTENT",
+            content: result.transcription,
+            rawTranscription: result.transcription,
+          });
+          return;
+        }
+
+        throw new Error(commandResult?.error || "Command processing failed");
+      }
+
+      console.log("Command processing successful:", commandResult);
 
       // Pass the command result to the parent component
       onCommandProcessed(commandResult);
@@ -218,6 +352,8 @@ const VoiceRecorder = ({
       });
     } finally {
       setIsProcessing(false);
+      setIsAIMode(false);
+      setIsLongPressDetected(false);
     }
   };
 
@@ -244,7 +380,11 @@ const VoiceRecorder = ({
         <View
           style={[
             styles.recordingContainer,
-            { backgroundColor: theme.cardBackground },
+            {
+              backgroundColor: theme.cardBackground,
+              borderColor: isAIMode ? theme.primary : "transparent",
+              borderWidth: isAIMode ? 2 : 0,
+            },
           ]}
         >
           {isRecording ? (
@@ -253,18 +393,25 @@ const VoiceRecorder = ({
                 style={[
                   styles.recordingPulse,
                   {
-                    backgroundColor: theme.error || "red",
+                    backgroundColor: isAIMode
+                      ? theme.primary
+                      : theme.error || "red",
                     transform: [{ scale: pulseAnim }],
                   },
                 ]}
               />
               <Text style={[styles.recordingText, { color: theme.text }]}>
+                {isAIMode ? "AI: " : ""}
                 {formatDuration(recordingDuration)}
               </Text>
               <TouchableOpacity
                 style={[
                   styles.stopButton,
-                  { backgroundColor: theme.error || "red" },
+                  {
+                    backgroundColor: isAIMode
+                      ? theme.primary
+                      : theme.error || "red",
+                  },
                 ]}
                 onPress={stopRecording}
               >
@@ -273,20 +420,41 @@ const VoiceRecorder = ({
             </>
           ) : (
             <>
-              <ActivityIndicator size="small" color={theme.primary} />
+              <ActivityIndicator
+                size="small"
+                color={isAIMode ? theme.primary : theme.accent}
+              />
               <Text style={[styles.processingText, { color: theme.text }]}>
-                Processing...
+                {isAIMode ? "Processing AI Question..." : "Processing..."}
               </Text>
             </>
           )}
         </View>
       ) : (
-        <TouchableOpacity
-          style={[styles.micButton, { backgroundColor: theme.primary }]}
-          onPress={startRecording}
-        >
-          <Ionicons name="mic" size={24} color="white" />
-        </TouchableOpacity>
+        <View>
+          {/* Optional AI mode indicator */}
+          {isAIMode && (
+            <View
+              style={[
+                styles.aiModeIndicator,
+                { backgroundColor: theme.primary },
+              ]}
+            >
+              <Text style={styles.aiModeText}>AI Mode</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={[styles.micButton, { backgroundColor: theme.primary }]}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+          >
+            <Ionicons
+              name={isAIMode ? "help-circle" : "mic"}
+              size={24}
+              color="white"
+            />
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -350,6 +518,20 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
+  },
+  aiModeIndicator: {
+    position: "absolute",
+    bottom: 70,
+    right: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    zIndex: 1001,
+  },
+  aiModeText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "bold",
   },
 });
 

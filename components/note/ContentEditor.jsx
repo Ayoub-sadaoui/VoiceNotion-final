@@ -28,7 +28,11 @@ const ContentEditor = ({
   recentTranscription,
   forceRefresh,
   theme,
+  isDark,
 }) => {
+  // Convert theme object to theme name string for the editor
+  const themeName = isDark ? "dark" : "light";
+
   return (
     <KeyboardAvoidingView
       style={styles.editorContainer}
@@ -53,7 +57,7 @@ const ContentEditor = ({
           onDeletePage={onDeletePage}
           nestedPages={nestedPages}
           recentTranscription={recentTranscription}
-          theme={theme}
+          theme={themeName}
         />
       ) : (
         <View style={styles.loadingContainer}>

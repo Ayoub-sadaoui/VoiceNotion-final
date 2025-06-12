@@ -651,6 +651,259 @@ export const handleApplyFormattingCommand = async (
   }
 };
 
+/**
+ * Handle modify block command (convert block types, change properties, etc)
+ */
+export const handleModifyBlockCommand = async (
+  commandResult,
+  editorContent,
+  initialContent,
+  editorRef,
+  setEditorContent,
+  setInitialContent,
+  currentPage,
+  storageSavePage,
+  setCurrentPage,
+  setForceRefresh,
+  setIsSaving
+) => {
+  try {
+    // Validate the command result
+    if (!commandResult.modificationType) {
+      console.warn("Missing modification type in command");
+      Toast.show({
+        type: "info",
+        text1: "Modification Error",
+        text2: "Please specify what modification to apply",
+        visibilityTime: 2000,
+      });
+      return;
+    }
+
+    console.log("Starting block modification with command:", commandResult);
+
+    // Set loading state
+    setIsSaving(true);
+
+    // Get current content
+    const currentContent = editorContent || initialContent || [];
+    console.log(`Current content has ${currentContent.length} blocks`);
+
+    if (currentContent.length === 0) {
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "No content to modify",
+        visibilityTime: 2000,
+      });
+      setIsSaving(false);
+      return;
+    }
+
+    // Make a copy of content to modify
+    const updatedContent = JSON.parse(JSON.stringify(currentContent));
+    let success = false;
+
+    // Handle different modification types
+    const modificationType = commandResult.modificationType;
+    console.log(`Modification type: ${modificationType}`);
+
+    if (modificationType === "CONVERT_TO_LIST") {
+      // Converting block types (e.g., bullet list to to-do list)
+      const newType = commandResult.newType;
+      const targetBlockType = commandResult.targetBlockType;
+      const targetBlockIds = commandResult.targetBlockIds;
+
+      console.log(`Converting to new type: ${newType}`);
+      console.log(`Target block type: ${targetBlockType}`);
+      console.log(
+        `Target block IDs: ${
+          targetBlockIds ? targetBlockIds.join(", ") : "none"
+        }`
+      );
+
+      // Determine which blocks to modify
+      let blocksToModify = [];
+
+      if (targetBlockType) {
+        // Modify all blocks of a specific type
+        blocksToModify = updatedContent.filter(
+          (block) => block.type === targetBlockType
+        );
+        console.log(
+          `Found ${blocksToModify.length} blocks of type ${targetBlockType} to modify`
+        );
+      } else if (targetBlockIds && targetBlockIds.length > 0) {
+        // Modify specific blocks by ID
+        blocksToModify = updatedContent.filter((block) =>
+          targetBlockIds.includes(block.id)
+        );
+        console.log(`Found ${blocksToModify.length} blocks by ID to modify`);
+      } else {
+        // Default to modifying all blocks that match the conversion pattern
+        // For bullet to todo, modify all bulletListItems
+        if (newType === "checkListItem") {
+          blocksToModify = updatedContent.filter(
+            (block) => block.type === "bulletListItem"
+          );
+          console.log(
+            `Found ${blocksToModify.length} bullet list items to convert to check list items`
+          );
+        } else if (newType === "bulletListItem") {
+          blocksToModify = updatedContent.filter(
+            (block) =>
+              block.type === "checkListItem" ||
+              block.type === "numberedListItem"
+          );
+          console.log(
+            `Found ${blocksToModify.length} items to convert to bullet list items`
+          );
+        } else if (newType === "numberedListItem") {
+          blocksToModify = updatedContent.filter(
+            (block) =>
+              block.type === "bulletListItem" || block.type === "checkListItem"
+          );
+          console.log(
+            `Found ${blocksToModify.length} items to convert to numbered list items`
+          );
+        }
+      }
+
+      // Perform the conversion
+      if (blocksToModify.length > 0) {
+        console.log(`Modifying ${blocksToModify.length} blocks`);
+        const blockIds = blocksToModify.map((block) => block.id);
+
+        for (const block of updatedContent) {
+          if (blockIds.includes(block.id)) {
+            console.log(
+              `Converting block ${block.id} from ${block.type} to ${newType}`
+            );
+            // Convert the block type
+            block.type = newType;
+
+            // Add any required properties for the new block type
+            if (
+              newType === "checkListItem" &&
+              !block.props.hasOwnProperty("checked")
+            ) {
+              block.props.checked = false;
+              console.log(`Added checked: false property to block ${block.id}`);
+            } else if (
+              newType === "heading" &&
+              !block.props.hasOwnProperty("level")
+            ) {
+              block.props.level = commandResult.headingLevel || 2;
+              console.log(
+                `Added level: ${block.props.level} property to block ${block.id}`
+              );
+            }
+
+            success = true;
+          }
+        }
+      } else {
+        console.log("No blocks found to modify");
+      }
+    } else if (modificationType === "CHANGE_TYPE") {
+      // Similar to CONVERT_TO_LIST but for non-list block types
+      // Implementation similar to above
+      const newType = commandResult.newType;
+      const targetBlockIds = commandResult.targetBlockIds;
+
+      if (targetBlockIds && targetBlockIds.length > 0) {
+        for (const block of updatedContent) {
+          if (targetBlockIds.includes(block.id)) {
+            block.type = newType;
+
+            // Add required properties
+            if (newType === "heading" && !block.props.hasOwnProperty("level")) {
+              block.props.level = commandResult.headingLevel || 2;
+            } else if (
+              newType === "checkListItem" &&
+              !block.props.hasOwnProperty("checked")
+            ) {
+              block.props.checked = false;
+            }
+
+            success = true;
+          }
+        }
+      }
+    }
+
+    // If successful, update state and save
+    if (success) {
+      console.log("Block modification successful, updating state");
+
+      // Update state variables
+      setEditorContent(updatedContent);
+      setInitialContent(updatedContent);
+
+      // Save to storage
+      if (currentPage) {
+        const contentJsonString = JSON.stringify(updatedContent);
+        const updatedPage = {
+          ...currentPage,
+          contentJson: contentJsonString,
+          updatedAt: Date.now(),
+        };
+
+        console.log("Saving modified content to storage");
+        const savedPage = await storageSavePage(updatedPage);
+        setCurrentPage(savedPage);
+
+        // Force refresh the editor
+        console.log("Forcing editor refresh");
+        setForceRefresh((prev) => prev + 10);
+
+        // Try to update the editor content directly if possible
+        if (
+          editorRef.current &&
+          typeof editorRef.current.setContent === "function"
+        ) {
+          console.log("Updating editor content directly");
+          editorRef.current.setContent(updatedContent);
+
+          // Try focusing the editor to ensure refresh
+          setTimeout(() => {
+            if (typeof editorRef.current.focusEditor === "function") {
+              console.log("Focusing editor");
+              editorRef.current.focusEditor();
+            }
+          }, 50);
+        }
+
+        Toast.show({
+          type: "success",
+          text1: "Success",
+          text2: "Block(s) modified successfully",
+          visibilityTime: 2000,
+        });
+      }
+    } else {
+      console.log("Block modification failed - no blocks were modified");
+      Toast.show({
+        type: "error",
+        text1: "Modification Failed",
+        text2: "Could not modify blocks",
+        visibilityTime: 2000,
+      });
+    }
+  } catch (error) {
+    console.error("Error modifying blocks:", error);
+    Toast.show({
+      type: "error",
+      text1: "Modification Error",
+      text2: "Failed to modify blocks",
+      visibilityTime: 2000,
+    });
+  } finally {
+    console.log("Block modification process completed");
+    setIsSaving(false);
+  }
+};
+
 // Export other voice command handlers as needed
 export const voiceCommandHandlers = {
   handleAIContentCommand,
@@ -658,6 +911,7 @@ export const voiceCommandHandlers = {
   handleInsertContentCommand,
   handleCreatePageCommand,
   handleApplyFormattingCommand,
+  handleModifyBlockCommand,
 };
 
 export default voiceCommandHandlers;

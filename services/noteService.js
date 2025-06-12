@@ -32,7 +32,7 @@ export const supabaseToLocalNote = (note) => {
     icon: note.icon || "📄", // Add icon field
   };
 
-  console.log("Local note format:", JSON.stringify(localNote));
+  // console.log("Local note format:", JSON.stringify(localNote));
   return localNote;
 };
 

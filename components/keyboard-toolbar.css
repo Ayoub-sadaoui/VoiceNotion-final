@@ -16,7 +16,7 @@
   padding: 8px;
   border-radius: 10px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  background-color: white;
+  background-color: var(--toolbar-bg, white);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -57,7 +57,7 @@
   align-items: center;
   padding-right: 8px;
   margin-right: 8px;
-  border-right: 1px solid #e8e8e8;
+  border-right: 1px solid var(--toolbar-border, #e8e8e8);
 }
 
 .toolbar-group:last-child {
@@ -69,7 +69,7 @@
 /* Button styling */
 .toolbar-button {
   background-color: transparent;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--toolbar-button-border, #e0e0e0);
   border-radius: 6px;
   margin: 0 2px;
   height: 36px;
@@ -81,7 +81,7 @@
   outline: none;
   position: relative;
   cursor: pointer;
-  color: #444;
+  color: var(--toolbar-button-color, #444);
 }
 
 /* SVG icon sizing */
@@ -92,8 +92,8 @@
 
 /* Button hover effect */
 .toolbar-button:hover {
-  background-color: #f5f5f5;
-  border-color: #d0d0d0;
+  background-color: var(--toolbar-button-hover, #f5f5f5);
+  border-color: var(--toolbar-button-hover-border, #d0d0d0);
 }
 
 /* Button active/pressed effect */
@@ -104,9 +104,9 @@
 /* Button active state */
 .toolbar-button.active,
 .toolbar-button[data-active="true"] {
-  background-color: #ebf5ff;
-  border-color: #90caf9;
-  color: #1976d2;
+  background-color: var(--toolbar-button-active-bg, #ebf5ff);
+  border-color: var(--toolbar-button-active-border, #90caf9);
+  color: var(--toolbar-button-active-color, #1976d2);
 }
 
 /* Tooltip style */
@@ -182,30 +182,42 @@
 }
 
 /* Dark theme support */
-@media (prefers-color-scheme: dark) {
-  .keyboard-toolbar {
-    background-color: #1e1e1e;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  }
+.theme-dark .keyboard-toolbar {
+  --toolbar-bg: #1e1e1e;
+  --toolbar-border: #333;
+  --toolbar-button-border: #444;
+  --toolbar-button-color: #eee;
+  --toolbar-button-hover: #2a2a2a;
+  --toolbar-button-hover-border: #555;
+  --toolbar-button-active-bg: #0d3a63;
+  --toolbar-button-active-border: #2196f3;
+  --toolbar-button-active-color: #90caf9;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
 
-  .toolbar-group {
-    border-color: #333;
-  }
+/* Light theme support */
+.theme-light .keyboard-toolbar {
+  --toolbar-bg: #ffffff;
+  --toolbar-border: #e8e8e8;
+  --toolbar-button-border: #e0e0e0;
+  --toolbar-button-color: #444;
+  --toolbar-button-hover: #f5f5f5;
+  --toolbar-button-hover-border: #d0d0d0;
+  --toolbar-button-active-bg: #ebf5ff;
+  --toolbar-button-active-border: #90caf9;
+  --toolbar-button-active-color: #1976d2;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
 
-  .toolbar-button {
-    border-color: #444;
-    color: #eee;
-  }
-
-  .toolbar-button:hover {
-    background-color: #2a2a2a;
-    border-color: #555;
-  }
-
-  .toolbar-button.active,
-  .toolbar-button[data-active="true"] {
-    background-color: #0d3a63;
-    border-color: #2196f3;
-    color: #90caf9;
-  }
+/* Default theme variables (fallback) */
+:root {
+  --toolbar-bg: #ffffff;
+  --toolbar-border: #e8e8e8;
+  --toolbar-button-border: #e0e0e0;
+  --toolbar-button-color: #444;
+  --toolbar-button-hover: #f5f5f5;
+  --toolbar-button-hover-border: #d0d0d0;
+  --toolbar-button-active-bg: #ebf5ff;
+  --toolbar-button-active-border: #90caf9;
+  --toolbar-button-active-color: #1976d2;
 }

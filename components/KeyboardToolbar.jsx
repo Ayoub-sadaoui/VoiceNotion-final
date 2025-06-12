@@ -1,35 +1,22 @@
 import React, { useState, useEffect } from "react";
 import { View, TouchableOpacity, StyleSheet, Text } from "react-native";
 import ToolbarIcon from "./ToolbarIcon";
-import { useTheme } from "../utils/themeContext";
 
 // Simple custom toolbar buttons with theme-aware colors
-const ToolbarButton = ({ iconType, onPress, isActive, tooltip }) => {
-  // Try to use the theme context, but provide fallback values if not available
-  let theme = { accentColor: "#007AFF" };
-  let isDark = false;
-
-  try {
-    const themeContext = useTheme();
-    if (themeContext) {
-      theme = themeContext.theme || theme;
-      isDark = themeContext.isDark || isDark;
-    }
-  } catch (error) {
-    // Theme context not available, use fallback values
-    // console.log("Theme context not available, using fallback values");
-  }
-
-  const activeColor = theme.accentColor || "#007AFF";
-  const inactiveColor = isDark ? "#CCCCCC" : "#333333";
-
+const ToolbarButton = ({
+  iconType,
+  onPress,
+  isActive,
+  tooltip,
+  themeColors,
+}) => {
   return (
     <TouchableOpacity
       style={[
         styles.toolbarButton,
         isActive && [
           styles.activeButton,
-          { backgroundColor: "rgba(0,122,255,0.12)" }, // 0.12 ≈ 0x20 / 0xff
+          { backgroundColor: `${themeColors.primary}20` }, // 20 is hex for 12% opacity
         ],
       ]}
       onPress={onPress}
@@ -38,7 +25,7 @@ const ToolbarButton = ({ iconType, onPress, isActive, tooltip }) => {
     >
       <ToolbarIcon
         type={iconType}
-        fill={isActive ? activeColor : inactiveColor}
+        fill={isActive ? themeColors.primary : themeColors.secondaryText}
       />
     </TouchableOpacity>
   );
@@ -50,20 +37,16 @@ const KeyboardToolbar = ({
   isKeyboardVisible = false,
   onCreatePageLink, // Function to create new linked page
   onDeletePage, // Function to delete current page
+  themeColors = {
+    primary: "#007AFF",
+    secondaryText: "#666666",
+    toolbar: {
+      background: "#fbfbfb",
+      border: "#eeeeee",
+    },
+  },
+  isDark = false,
 }) => {
-  // Try to use the theme context, but provide fallback values if not available
-  let theme = { accentColor: "#007AFF" };
-  let isDark = false;
-
-  try {
-    const themeContext = useTheme();
-    theme = themeContext.theme || theme;
-    isDark = themeContext.isDark || isDark;
-  } catch (error) {
-    // Theme context not available, use fallback values
-    // console.log("Theme context not available, using fallback values");
-  }
-
   // State for tracking button visibility
   const [showPageOptions, setShowPageOptions] = useState(false);
 
@@ -293,15 +276,11 @@ const KeyboardToolbar = ({
   // Calculate toolbar position based on keyboard
   const toolbarBottomPosition = isKeyboardVisible ? keyboardHeight + 10 : 20;
 
-  // Get theme-based colors
-  const backgroundColor = isDark ? "#1F1F1F" : "#fbfbfb";
-  const borderColor = isDark ? "#444444" : "#eeeeee";
-
   return (
     <View
       style={[
         styles.toolbarContainer,
-        { bottom: 0, backgroundColor: backgroundColor },
+        { bottom: 0, backgroundColor: themeColors.toolbar.background },
       ]}
     >
       <View
@@ -309,84 +288,114 @@ const KeyboardToolbar = ({
           styles.keyboardToolbar,
           {
             backgroundColor: "transparent",
-            borderTopColor: borderColor,
+            borderTopColor: themeColors.toolbar.border,
             borderTopWidth: 1,
           },
         ]}
       >
         {/* Block formatting buttons */}
-        <View style={[styles.toolbarGroup, { borderRightColor: borderColor }]}>
+        <View
+          style={[
+            styles.toolbarGroup,
+            { borderRightColor: themeColors.toolbar.border },
+          ]}
+        >
           <ToolbarButton
             iconType="heading1"
             onPress={() => applyFormat("heading1")}
             isActive={activeFormats.heading1}
             tooltip="Heading 1"
+            themeColors={themeColors}
           />
           <ToolbarButton
             iconType="heading2"
             onPress={() => applyFormat("heading2")}
             isActive={activeFormats.heading2}
             tooltip="Heading 2"
+            themeColors={themeColors}
           />
           <ToolbarButton
             iconType="heading3"
             onPress={() => applyFormat("heading3")}
             isActive={activeFormats.heading3}
             tooltip="Heading 3"
+            themeColors={themeColors}
           />
         </View>
 
         {/* List buttons */}
-        <View style={[styles.toolbarGroup, { borderRightColor: borderColor }]}>
+        <View
+          style={[
+            styles.toolbarGroup,
+            { borderRightColor: themeColors.toolbar.border },
+          ]}
+        >
           <ToolbarButton
             iconType="bulletList"
             onPress={() => applyFormat("bulletList")}
             isActive={activeFormats.bulletList}
             tooltip="Bullet List"
+            themeColors={themeColors}
           />
           <ToolbarButton
             iconType="numberedList"
             onPress={() => applyFormat("numberedList")}
             isActive={activeFormats.numberedList}
             tooltip="Numbered List"
+            themeColors={themeColors}
           />
         </View>
 
         {/* Special blocks */}
-        <View style={[styles.toolbarGroup, { borderRightColor: borderColor }]}>
+        <View
+          style={[
+            styles.toolbarGroup,
+            { borderRightColor: themeColors.toolbar.border },
+          ]}
+        >
           <ToolbarButton
             iconType="quote"
             onPress={() => applyFormat("quote")}
             isActive={activeFormats.quote}
             tooltip="Quote Block"
+            themeColors={themeColors}
           />
           <ToolbarButton
             iconType="code"
             onPress={() => applyFormat("code")}
             isActive={activeFormats.code}
             tooltip="Code Block"
+            themeColors={themeColors}
           />
         </View>
 
         {/* Text formatting buttons */}
-        <View style={[styles.toolbarGroup, { borderRightColor: borderColor }]}>
+        <View
+          style={[
+            styles.toolbarGroup,
+            { borderRightColor: themeColors.toolbar.border },
+          ]}
+        >
           <ToolbarButton
             iconType="bold"
             onPress={() => applyFormat("bold")}
             isActive={activeFormats.bold}
             tooltip="Bold"
+            themeColors={themeColors}
           />
           <ToolbarButton
             iconType="italic"
             onPress={() => applyFormat("italic")}
             isActive={activeFormats.italic}
             tooltip="Italic"
+            themeColors={themeColors}
           />
           <ToolbarButton
             iconType="underline"
             onPress={() => applyFormat("underline")}
             isActive={activeFormats.underline}
             tooltip="Underline"
+            themeColors={themeColors}
           />
         </View>
 
@@ -399,6 +408,7 @@ const KeyboardToolbar = ({
                 onPress={() => applyFormat("createPage")}
                 isActive={false}
                 tooltip="Create Nested Page"
+                themeColors={themeColors}
               />
             )}
             {onDeletePage && (
@@ -407,6 +417,7 @@ const KeyboardToolbar = ({
                 onPress={() => applyFormat("deletePage")}
                 isActive={false}
                 tooltip="Delete Current Page"
+                themeColors={themeColors}
               />
             )}
           </View>

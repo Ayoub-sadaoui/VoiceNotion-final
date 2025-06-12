@@ -1,4 +1,6 @@
 import axios from "axios";
+import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system";
 
 // Replace this with your actual Gemini API key or use environment variable
 // In production, this should be handled server-side to protect the API key
@@ -1215,6 +1217,8 @@ export const processVoiceCommandWithGemini = async (
       "bullet",
       "numbered",
       "todo",
+      "check",
+      "task",
       "quote",
       "code",
       // Target specifiers
@@ -1237,7 +1241,133 @@ export const processVoiceCommandWithGemini = async (
       };
     }
 
-    console.log("Processing voice command with Gemini:", voiceCommand);
+    // Pre-process the voice command to normalize to-do list references
+    let processedCommand = voiceCommand;
+
+    // Check for to-do list related phrases and normalize them
+    const todoPatterns = [
+      /to-do list/i,
+      /todo list/i,
+      /to do list/i,
+      /task list/i,
+      /checklist/i,
+      /check list/i,
+      /check item/i,
+    ];
+
+    // Special pattern for converting to a to-do list
+    const convertToTodoPatterns = [
+      /convert.*(?:to|into).*(?:to-do|todo|task|check) list/i,
+      /change.*(?:to|into).*(?:to-do|todo|task|check) list/i,
+      /make.*(?:a|the).*(?:to-do|todo|task|check) list/i,
+      /transform.*(?:to|into).*(?:to-do|todo|task|check) list/i,
+    ];
+
+    // Special pattern for AI questions
+    const askAIPatterns = [
+      /^ask\s+(?:the)?\s*ai\s+(.+)/i,
+      /^(?:hey|hi|hello)\s+(?:ai|assistant|gemini)\s+(.+)/i,
+      /^(?:ai|assistant|gemini)[,:]?\s+(.+)/i,
+      /^tell\s+me\s+(?:about|what|who|when|where|why|how)\s+(.+)/i,
+      /^what\s+(?:is|are|was|were)\s+(.+)/i,
+      /^who\s+(?:is|are|was|were)\s+(.+)/i,
+      /^when\s+(?:is|are|was|were)\s+(.+)/i,
+      /^where\s+(?:is|are|was|were)\s+(.+)/i,
+      /^why\s+(?:is|are|was|were)\s+(.+)/i,
+      /^how\s+(?:to|do|does|did)\s+(.+)/i,
+      /^can\s+you\s+(?:tell|explain|describe)\s+(.+)/i,
+    ];
+
+    // Check if the command is an AI question
+    let questionMatch = null;
+    let question = null;
+
+    for (const pattern of askAIPatterns) {
+      const match = voiceCommand.match(pattern);
+      if (match && match[1]) {
+        questionMatch = match;
+        question = match[1].trim();
+        break;
+      }
+    }
+
+    if (question) {
+      console.log("Detected AI question:", question);
+
+      try {
+        // Process the question with Gemini
+        const aiResponse = await askGeminiAI(question, editorContent);
+
+        if (aiResponse.success && aiResponse.blocks) {
+          console.log("Got AI answer with blocks:", aiResponse.blocks.length);
+          return {
+            success: true,
+            action: "INSERT_AI_ANSWER",
+            blocks: aiResponse.blocks,
+            rawCommand: voiceCommand,
+            rawTranscription: voiceCommand,
+          };
+        } else {
+          console.error("Failed to get AI answer:", aiResponse.message);
+          return {
+            success: false,
+            action: "CLARIFICATION",
+            message: aiResponse.message || "I couldn't answer that question.",
+            rawCommand: voiceCommand,
+          };
+        }
+      } catch (error) {
+        console.error("Error processing AI question:", error);
+        return {
+          success: false,
+          action: "CLARIFICATION",
+          message: "Sorry, I had trouble answering that question.",
+          rawCommand: voiceCommand,
+        };
+      }
+    }
+
+    // Direct handling for to-do list conversion commands
+    const isConvertToTodoCommand = convertToTodoPatterns.some((pattern) =>
+      pattern.test(voiceCommand)
+    );
+
+    if (isConvertToTodoCommand) {
+      console.log("Detected direct to-do list conversion command");
+
+      // Find all bullet list items to convert
+      const bulletListItems = editorContent
+        ? editorContent
+            .filter((block) => block.type === "bulletListItem")
+            .map((block) => block.id)
+        : [];
+
+      if (bulletListItems.length > 0) {
+        console.log(
+          `Found ${bulletListItems.length} bullet list items to convert to check list items`
+        );
+        return {
+          success: true,
+          action: "MODIFY_BLOCK",
+          modificationType: "CONVERT_TO_LIST",
+          newType: "checkListItem",
+          listType: "todo",
+          targetBlockType: "bulletListItem",
+          targetBlockIds: bulletListItems,
+          rawCommand: voiceCommand,
+          rawTranscription: voiceCommand,
+        };
+      }
+    }
+
+    // If the command contains any to-do list references, make it explicit
+    if (todoPatterns.some((pattern) => pattern.test(voiceCommand))) {
+      console.log("Detected to-do list reference in command, normalizing");
+      // Add an explicit reference to checkListItem for the AI to understand
+      processedCommand += " (convert to checkListItem type)";
+    }
+
+    console.log("Processing voice command with Gemini:", processedCommand);
 
     // Pre-process the editor content to add block indices for easier reference
     const processedContent = editorContent
@@ -1434,11 +1564,19 @@ CONTEXT RULES:
 BLOCK TYPE CONVERSION MAPPING:
 - "bullet list" or "bulleted list" → "bulletListItem"
 - "numbered list" or "ordered list" → "numberedListItem"
-- "todo list" or "checklist" or "task list" → "checkListItem"
+- "todo list" or "to-do list" or "to do list" or "checklist" or "task list" or "check item list" → "checkListItem"
 - "quote" or "quotation" → "quote"
 - "code block" or "code" → "code"
 - "paragraph" → "paragraph"
 - "heading" → "heading" (with appropriate level)
+
+IMPORTANT: When the user mentions converting to a "to-do list", "todo list", "task list", "checklist", or similar, 
+ALWAYS set:
+- action: "MODIFY_BLOCK"
+- modificationType: "CONVERT_TO_LIST"
+- newType: "checkListItem"
+- listType: "todo"
+- targetBlockType: "bulletListItem" (if converting from bullet list)
 
 COLOR MAPPING:
 Map color names to their standard values:
@@ -1452,7 +1590,7 @@ Return only the JSON object with no preamble or explanation.`,
           role: "user", // Second user message with the actual content to process
           parts: [
             {
-              text: `Voice Command: "${voiceCommand}"
+              text: `Voice Command: "${processedCommand}"
               
 Editor Content: ${JSON.stringify(processedContent)}`,
             },
@@ -1849,10 +1987,115 @@ Respond with ONLY the JSON array of blocks. Do not include any other text or exp
   }
 };
 
+/**
+ * Transcribe audio recording using Gemini API
+ * @param {string} audioUri - URI to the audio file to transcribe
+ * @returns {Object} - Response containing transcription or error information
+ */
+export const transcribeAudioWithGemini = async (audioUri) => {
+  try {
+    // Validate input
+    if (!audioUri || typeof audioUri !== "string") {
+      console.error("Invalid audio URI input");
+      return { success: false, error: "Invalid audio URI" };
+    }
+
+    console.log("Transcribing audio with Gemini:", audioUri);
+
+    try {
+      // Get audio file info
+      const audioInfo = await FileSystem.getInfoAsync(audioUri);
+      console.log("Audio file info:", audioInfo);
+
+      if (!audioInfo.exists) {
+        throw new Error("Audio file does not exist");
+      }
+
+      // Read the audio file as base64
+      const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Create the API request to Gemini API
+      const apiUrl = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+
+      const requestData = {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: "Please transcribe the following audio file accurately. Return only the transcribed text without any additional comments or formatting.",
+              },
+              {
+                inline_data: {
+                  mime_type: "audio/m4a", // Expo Audio uses .m4a format by default
+                  data: base64Audio,
+                },
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.0,
+          topP: 0.1,
+          topK: 16,
+          maxOutputTokens: 1024,
+        },
+      };
+
+      // Make the API request
+      const response = await axios.post(apiUrl, requestData);
+
+      // Extract the transcription from the response
+      let transcription = "";
+      if (
+        response.data &&
+        response.data.candidates &&
+        response.data.candidates.length > 0 &&
+        response.data.candidates[0].content &&
+        response.data.candidates[0].content.parts &&
+        response.data.candidates[0].content.parts.length > 0
+      ) {
+        transcription = response.data.candidates[0].content.parts[0].text;
+      } else {
+        throw new Error("No transcription results returned");
+      }
+
+      console.log("Transcription successful:", transcription);
+
+      return {
+        success: true,
+        transcription: transcription,
+      };
+    } catch (error) {
+      console.error("Error processing audio file:", error);
+      return {
+        success: false,
+        error: `Audio processing error: ${error.message || "Unknown error"}`,
+      };
+    }
+  } catch (error) {
+    console.error("Error transcribing audio:", error);
+    return {
+      success: false,
+      error: `Transcription error: ${error.message || "Unknown error"}`,
+    };
+  }
+};
+
+/**
+ * Process a voice command with Gemini API
+ * This is an alias for processVoiceCommandWithGemini to fix the function name mismatch
+ */
+export const processCommandWithGemini = processVoiceCommandWithGemini;
+
 export default {
   processTranscriptionWithGemini,
   validateBlockNoteFormat,
   processGeminiResponse,
   processVoiceCommandWithGemini,
+  processCommandWithGemini,
+  transcribeAudioWithGemini,
   askGeminiAI,
 };
