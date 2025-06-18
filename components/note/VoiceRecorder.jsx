@@ -11,9 +11,9 @@ import {
 } from "react-native";
 import { Audio } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
-import Toast from "react-native-toast-message";
 import * as Haptics from "expo-haptics";
 import geminiService from "../../services/geminiService";
+import { showToast } from "../ToastManager";
 
 /**
  * VoiceRecorder component - Handles voice recording and command processing
@@ -71,6 +71,13 @@ const VoiceRecorder = ({
 
   // Clean up on unmount
   useEffect(() => {
+    // Show a welcome toast
+    showToast({
+      type: "info",
+      message: "Tap mic to start recording",
+      duration: 5000,
+    });
+
     return () => {
       if (longPressTimeout.current) {
         clearTimeout(longPressTimeout.current);
@@ -87,11 +94,10 @@ const VoiceRecorder = ({
       const { granted } = await Audio.requestPermissionsAsync();
 
       if (!granted) {
-        Toast.show({
+        showToast({
           type: "error",
-          text1: "Permission Denied",
-          text2: "Microphone access is required for voice commands",
-          visibilityTime: 3000,
+          message: "Mic access needed",
+          duration: 3000,
         });
         return false;
       }
@@ -99,11 +105,10 @@ const VoiceRecorder = ({
       return true;
     } catch (error) {
       console.error("Error requesting permissions:", error);
-      Toast.show({
+      showToast({
         type: "error",
-        text1: "Error",
-        text2: "Failed to request microphone permissions",
-        visibilityTime: 3000,
+        message: "Mic permission failed",
+        duration: 3000,
       });
       return false;
     }
@@ -121,11 +126,10 @@ const VoiceRecorder = ({
       if (Platform.OS === "ios") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       }
-      Toast.show({
+      showToast({
         type: "info",
-        text1: "AI Question Mode",
-        text2: "Ask a question to get an AI answer",
-        visibilityTime: 1500,
+        message: "AI Question Mode",
+        duration: 1500,
       });
       startRecording();
     }, 800);
@@ -185,13 +189,19 @@ const VoiceRecorder = ({
       console.log(
         `Recording started in ${isAIMode ? "AI Question" : "Command"} mode`
       );
+
+      // Show recording toast
+      showToast({
+        type: "recording",
+        message: isAIMode ? "Recording question..." : "Recording...",
+        duration: 0, // No auto-hide
+      });
     } catch (error) {
       console.error("Failed to start recording", error);
-      Toast.show({
+      showToast({
         type: "error",
-        text1: "Recording Error",
-        text2: "Failed to start recording",
-        visibilityTime: 2000,
+        message: "Recording failed",
+        duration: 2000,
       });
       setIsAIMode(false);
       setIsLongPressDetected(false);
@@ -233,11 +243,10 @@ const VoiceRecorder = ({
     } catch (error) {
       console.error("Failed to stop recording", error);
       setIsProcessing(false);
-      Toast.show({
+      showToast({
         type: "error",
-        text1: "Recording Error",
-        text2: "Failed to process recording",
-        visibilityTime: 2000,
+        message: "Processing failed",
+        duration: 2000,
       });
 
       // Ensure recording is reset even on error
@@ -251,6 +260,14 @@ const VoiceRecorder = ({
   const processRecording = async (uri) => {
     try {
       setIsProcessing(true);
+
+      // Update toast to processing state
+      showToast({
+        type: "processing",
+        message: isAIMode ? "Transcribing..." : "Processing...",
+        duration: 0, // No auto-hide
+        showProgress: true,
+      });
 
       // Transcribe the audio using Gemini API
       console.log("Sending audio for transcription:", uri);
@@ -267,13 +284,10 @@ const VoiceRecorder = ({
       setTranscription(result.transcription);
       console.log("Transcription successful:", result.transcription);
 
-      Toast.show({
+      showToast({
         type: "success",
-        text1: "Transcription Success",
-        text2: isAIMode
-          ? "Processing your question..."
-          : "Processing your command...",
-        visibilityTime: 1500,
+        message: isAIMode ? "Processing question..." : "Processing command...",
+        duration: 1500,
       });
 
       let commandResult;
@@ -281,6 +295,14 @@ const VoiceRecorder = ({
       if (isAIMode) {
         // In AI mode, directly use askGeminiAI instead of processCommandWithGemini
         console.log("Processing direct AI question:", result.transcription);
+
+        showToast({
+          type: "processing",
+          message: "Processing question...",
+          duration: 0, // No auto-hide
+          showProgress: true,
+        });
+
         const aiResponse = await geminiService.askGeminiAI(
           result.transcription,
           editorContent
@@ -303,6 +325,13 @@ const VoiceRecorder = ({
         }
       } else {
         // Normal command processing
+        showToast({
+          type: "processing",
+          message: "Processing command...",
+          duration: 0, // No auto-hide
+          showProgress: true,
+        });
+
         commandResult = await geminiService.processCommandWithGemini(
           result.transcription,
           editorContent
@@ -318,11 +347,10 @@ const VoiceRecorder = ({
         // If we have transcription but command processing failed,
         // we can still show the transcription to the user
         if (result.transcription) {
-          Toast.show({
+          showToast({
             type: "info",
-            text1: "Command Not Recognized",
-            text2: "Adding text as regular content",
-            visibilityTime: 2000,
+            message: "Adding as text",
+            duration: 2000,
           });
 
           // Pass a simple insert content command instead
@@ -340,20 +368,52 @@ const VoiceRecorder = ({
 
       console.log("Command processing successful:", commandResult);
 
+      // Show success toast based on action
+      showToast({
+        type: "success",
+        message: getSuccessMessageForAction(commandResult.action),
+        duration: 2000,
+      });
+
       // Pass the command result to the parent component
       onCommandProcessed(commandResult);
     } catch (error) {
       console.error("Error processing recording:", error);
-      Toast.show({
+      showToast({
         type: "error",
-        text1: "Processing Error",
-        text2: error.message || "Failed to process voice command",
-        visibilityTime: 2000,
+        message: error.message
+          ? error.message.substring(0, 24)
+          : "Processing failed",
+        duration: 2000,
       });
     } finally {
       setIsProcessing(false);
       setIsAIMode(false);
       setIsLongPressDetected(false);
+    }
+  };
+
+  // Get success message based on action type
+  const getSuccessMessageForAction = (action) => {
+    switch (action) {
+      case "INSERT_CONTENT":
+        return "Text added";
+      case "INSERT_AI_ANSWER":
+        return "AI answer added";
+      case "DELETE_BLOCK":
+        return "Content deleted";
+      case "CREATE_PAGE":
+        return "Page created";
+      case "APPLY_FORMATTING":
+        return "Formatting applied";
+      case "MODIFY_BLOCK":
+        return "Content modified";
+      case "UNDO":
+        return "Undo successful";
+      case "REDO":
+        return "Redo successful";
+      default:
+        return "Command executed";
     }
   };
 
@@ -369,9 +429,9 @@ const VoiceRecorder = ({
   // Calculate position based on keyboard visibility
   const calculatePosition = () => {
     if (!isKeyboardVisible) {
-      return { bottom: 20 };
+      return { bottom: 100 };
     }
-    return { bottom: keyboardHeight + 20 };
+    return { bottom: keyboardHeight + 100 };
   };
 
   return (

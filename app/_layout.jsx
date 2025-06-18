@@ -1,5 +1,5 @@
 import { Stack } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { View, StatusBar } from "react-native";
@@ -8,8 +8,9 @@ import { ThemeProvider, useTheme } from "../utils/themeContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Animated } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import Toast from "react-native-toast-message";
+import ToastManager from "../components/ToastManager";
 import { AuthProvider } from "../contexts/AuthContext";
+import { ModalProvider, useModal } from "../contexts/ModalContext";
 
 // Prevent the splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -62,11 +63,30 @@ function StackNavigator() {
   );
 }
 
+// Component to initialize the modal service
+function ModalServiceInitializer() {
+  const { showModal, hideModal } = useModal();
+
+  // Initialize the global modal service
+  useEffect(() => {
+    if (global) {
+      global.showModal = showModal;
+      global.hideModal = hideModal;
+    }
+  }, [showModal, hideModal]);
+
+  return null;
+}
+
 function RootLayoutNav() {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <StackNavigator />
+        <ModalProvider>
+          <ModalServiceInitializer />
+          <StackNavigator />
+          <ToastManager />
+        </ModalProvider>
       </ThemeProvider>
     </AuthProvider>
   );
@@ -94,7 +114,6 @@ export default function RootLayout() {
         <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
           <RootLayoutNav />
         </View>
-        <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

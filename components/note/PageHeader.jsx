@@ -150,7 +150,7 @@ const PageHeader = ({
 
 const styles = StyleSheet.create({
   headerWrapper: {
-    paddingTop: 5,
+    paddingTop: 0,
   },
   topBar: {
     flexDirection: "row",

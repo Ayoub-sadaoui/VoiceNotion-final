@@ -41,7 +41,7 @@ const KeyboardToolbarWrapper = ({
     <div
       style={{
         position: "fixed",
-        bottom: keyboardHeight + 50,
+        bottom: keyboardHeight + 45,
         left: 0,
         right: 0,
         zIndex: 1000,

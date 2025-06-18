@@ -66,6 +66,7 @@ export const AuthProvider = ({ children }) => {
     session,
     isAuthenticated: !!user,
     loading,
+    setUser,
   };
 
   if (loading) {

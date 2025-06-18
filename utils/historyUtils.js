@@ -2,6 +2,42 @@
  * Utility functions for handling undo/redo history operations
  */
 import Toast from "react-native-toast-message";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+/**
+ * Persist undo and redo stacks to AsyncStorage
+ * @param {string} pageId - Current page ID
+ * @param {Array} undoStack - Current undo stack
+ * @param {Array} redoStack - Current redo stack
+ */
+const persistHistoryStacks = async (pageId, undoStack, redoStack) => {
+  if (!pageId) return;
+
+  try {
+    const undoStackKey = `undoStack_${pageId}`;
+    const redoStackKey = `redoStack_${pageId}`;
+
+    // Save undo stack
+    if (undoStack.length > 0) {
+      await AsyncStorage.setItem(undoStackKey, JSON.stringify(undoStack));
+      console.log(`Persisted undo stack with ${undoStack.length} items`);
+    } else {
+      await AsyncStorage.removeItem(undoStackKey);
+      console.log("Removed empty undo stack from storage");
+    }
+
+    // Save redo stack
+    if (redoStack.length > 0) {
+      await AsyncStorage.setItem(redoStackKey, JSON.stringify(redoStack));
+      console.log(`Persisted redo stack with ${redoStack.length} items`);
+    } else {
+      await AsyncStorage.removeItem(redoStackKey);
+      console.log("Removed empty redo stack from storage");
+    }
+  } catch (error) {
+    console.error("Error persisting history stacks:", error);
+  }
+};
 
 /**
  * Handle undo operation
@@ -17,6 +53,7 @@ import Toast from "react-native-toast-message";
  * @param {Function} setForceRefresh - State setter for force refresh
  * @param {Object} editorRef - Reference to editor component
  * @param {Function} setIsUndoRedoOperation - State setter for undo/redo operation flag
+ * @param {Function} setLastMajorChange - State setter for last major change
  * @returns {Promise<void>}
  */
 export const handleUndo = async (
@@ -31,7 +68,8 @@ export const handleUndo = async (
   setCurrentPage,
   setForceRefresh,
   editorRef,
-  setIsUndoRedoOperation
+  setIsUndoRedoOperation,
+  setLastMajorChange = null
 ) => {
   try {
     console.log("Handling undo with local storage approach");
@@ -55,14 +93,21 @@ export const handleUndo = async (
     const prevState = prevStack.pop();
     setUndoStack(prevStack);
 
-    // Add current state to redo stack
+    // Create updated redo stack with current content
+    let updatedRedoStack = [];
     if (editorContent) {
+      updatedRedoStack = [editorContent];
       setRedoStack((prevRedoStack) => [...prevRedoStack, editorContent]);
     }
 
     // Update editor content with the previous state
     setEditorContent(prevState);
     setInitialContent(prevState);
+
+    // Update last major change if the setter is provided
+    if (setLastMajorChange) {
+      setLastMajorChange(prevState);
+    }
 
     // Save to storage
     if (currentPage) {
@@ -86,6 +131,13 @@ export const handleUndo = async (
       ) {
         editorRef.current.setContent(prevState);
       }
+
+      // Persist updated history stacks - get current redo stack state via a callback
+      setRedoStack((currentRedoStack) => {
+        // Persist the stacks after we have the current state
+        persistHistoryStacks(currentPage.id, prevStack, currentRedoStack);
+        return currentRedoStack; // Return unchanged to avoid state update loop
+      });
 
       Toast.show({
         type: "success",
@@ -120,6 +172,7 @@ export const handleUndo = async (
  * @param {Function} setForceRefresh - State setter for force refresh
  * @param {Object} editorRef - Reference to editor component
  * @param {Function} setIsUndoRedoOperation - State setter for undo/redo operation flag
+ * @param {Function} setLastMajorChange - State setter for last major change
  * @returns {Promise<void>}
  */
 export const handleRedo = async (
@@ -134,7 +187,8 @@ export const handleRedo = async (
   setCurrentPage,
   setForceRefresh,
   editorRef,
-  setIsUndoRedoOperation
+  setIsUndoRedoOperation,
+  setLastMajorChange = null
 ) => {
   try {
     console.log("Handling redo with local storage approach");
@@ -158,14 +212,21 @@ export const handleRedo = async (
     const nextState = prevRedoStack.pop();
     setRedoStack(prevRedoStack);
 
-    // Add current state to undo stack
+    // Create updated undo stack with current content
+    let updatedUndoStack = [];
     if (editorContent) {
+      updatedUndoStack = [editorContent];
       setUndoStack((prevUndoStack) => [...prevUndoStack, editorContent]);
     }
 
     // Update editor content with the next state
     setEditorContent(nextState);
     setInitialContent(nextState);
+
+    // Update last major change if the setter is provided
+    if (setLastMajorChange) {
+      setLastMajorChange(nextState);
+    }
 
     // Save to storage
     if (currentPage) {
@@ -189,6 +250,13 @@ export const handleRedo = async (
       ) {
         editorRef.current.setContent(nextState);
       }
+
+      // Persist updated history stacks - get current undo stack state via a callback
+      setUndoStack((currentUndoStack) => {
+        // Persist the stacks after we have the current state
+        persistHistoryStacks(currentPage.id, currentUndoStack, prevRedoStack);
+        return currentUndoStack; // Return unchanged to avoid state update loop
+      });
 
       Toast.show({
         type: "success",

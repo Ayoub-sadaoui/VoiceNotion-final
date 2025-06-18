@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import EditorWeb from "../../../components/Editor.web";
+import EditorWeb from "../../../components/Editor.web.jsx";
 import { useTheme } from "../../../utils/themeContext";
 import {
   SafeAreaView,

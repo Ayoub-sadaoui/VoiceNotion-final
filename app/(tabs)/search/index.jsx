@@ -16,6 +16,7 @@ import FilterChips from "../../../components/FilterChips";
 import { useRouter } from "expo-router";
 import usePageStorage from "../../../hooks/usePageStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "../../../contexts/AuthContext";
 
 // Maximum number of recent searches to store
 const MAX_RECENT_SEARCHES = 5;
@@ -24,6 +25,7 @@ const RECENT_SEARCHES_KEY = "voicenotion_recent_searches";
 export default function SearchScreen() {
   const { theme } = useTheme();
   const router = useRouter();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [activeFilter, setActiveFilter] = useState("all");
@@ -31,7 +33,7 @@ export default function SearchScreen() {
   const [isSearching, setIsSearching] = useState(false);
 
   // Get page storage functionality
-  const { pages, loading, loadPages } = usePageStorage();
+  const { pages, loading, loadPages } = usePageStorage(user?.id);
 
   // Load recent searches from storage on component mount
   useEffect(() => {
@@ -48,6 +50,15 @@ export default function SearchScreen() {
 
     loadRecentSearches();
   }, []);
+
+  // Debug log for authentication state
+  useEffect(() => {
+    console.log(
+      "SearchScreen - Auth state:",
+      user ? `User ID: ${user.id}` : "Not authenticated"
+    );
+    console.log("SearchScreen - Pages loaded:", pages.length);
+  }, [user, pages]);
 
   // Filter for search results
   const searchFilters = [
@@ -93,7 +104,7 @@ export default function SearchScreen() {
       try {
         // Make sure we have the latest pages
         // Only load pages if we don't already have them
-        if (pages.length === 0) {
+        if (pages.length === 0 && user?.id) {
           await loadPages();
         }
 
@@ -158,7 +169,7 @@ export default function SearchScreen() {
     // Debounce search to avoid excessive processing
     const debounceTimer = setTimeout(performSearch, 300);
     return () => clearTimeout(debounceTimer);
-  }, [searchQuery, activeFilter, pages, loadPages, saveRecentSearch]);
+  }, [searchQuery, activeFilter, pages, loadPages, saveRecentSearch, user]);
 
   // Extract text content from page content JSON
   const extractTextFromContent = (contentArray) => {
@@ -398,6 +409,29 @@ export default function SearchScreen() {
     );
   }
 
+  // Show authentication warning if not logged in
+  if (!user && !loading) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: theme.background }]}
+      >
+        <ScreenHeader title="Search" rightElement={headerRight} />
+        <View style={styles.loadingContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color={theme.error} />
+          <Text style={[styles.loadingText, { color: theme.secondaryText }]}>
+            Please log in to search your notes
+          </Text>
+          <TouchableOpacity
+            style={[styles.loginButton, { backgroundColor: theme.primary }]}
+            onPress={() => router.push("/auth/login")}
+          >
+            <Text style={styles.loginButtonText}>Go to Login</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
@@ -611,6 +645,17 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
+    fontSize: 16,
+  },
+  loginButton: {
+    marginTop: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  loginButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "600",
     fontSize: 16,
   },
 });

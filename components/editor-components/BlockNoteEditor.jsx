@@ -2,10 +2,10 @@
 
 import React, {
   useEffect,
-  useRef,
-  useState,
   forwardRef,
   useImperativeHandle,
+  useState,
+  useRef,
   useCallback,
 } from "react";
 import { BlockNoteView } from "@blocknote/mantine";
@@ -23,6 +23,27 @@ import KeyboardToolbarWrapper from "./KeyboardToolbarWrapper";
 import ConfirmDialog from "./ConfirmDialog";
 import editorSchema from "./editorSchema";
 import TranscriptionHandler from "./TranscriptionHandler";
+
+// Dropdown fix style
+const dropdownFixStyle = `
+  /* Emergency fix for dropdown visibility */
+  .bn-container [role="menu"],
+  .bn-container [role="listbox"],
+  .bn-container .bn-popover,
+  .bn-container .bn-dropdown,
+  .bn-container .bn-menu,
+  .bn-container .bn-color-picker,
+  .bn-container .bn-block-type-dropdown-menu {
+    position: fixed !important;
+    z-index: 99999 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    transform: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+  }
+`;
 
 /**
  * Main editor component that uses BlockNote
@@ -823,68 +844,71 @@ const BlockNoteEditor = forwardRef((props, ref) => {
 
   // Renders the editor instance using a React component
   return (
-    <div
-      ref={editorContainerRef}
-      style={{
-        height: "100%",
-        width: "100%",
-        overflowY: "auto",
-        overflowX: "hidden",
-        WebkitOverflowScrolling: "touch",
-        position: "relative",
-        display: "flex",
-        flexDirection: "column",
-      }}
-      className={`editor-scroll-container theme-${
-        typeof theme === "string" ? theme : "light"
-      }`}
-    >
-      <BlockNoteView
-        editor={editor}
-        editable={true}
-        sideMenu={false}
-        slashMenu={true}
-        theme={theme}
-        onChange={() => {
-          // Call the onChange handler provided by the native side
-          if (onChange) {
-            onChange(editor.topLevelBlocks);
-          }
+    <div className="editor-container">
+      <style dangerouslySetInnerHTML={{ __html: dropdownFixStyle }} />
+      <div
+        ref={editorContainerRef}
+        style={{
+          height: "100%",
+          width: "100%",
+          overflowY: "auto",
+          overflowX: "hidden",
+          WebkitOverflowScrolling: "touch",
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
         }}
-        formattingToolbar={false}
-        htmlAttributes={{
-          editor: {
-            class: `blocknote-editor custom-editor theme-${
-              typeof theme === "string" ? theme : "light"
-            }`,
-            style:
-              "height: 100%; min-height: 150px; width: 100%; user-select: text; -webkit-touch-callout: none;",
-          },
-          block: {
-            style: "margin: 0.5em 0;",
-          },
-        }}
+        className={`editor-scroll-container theme-${
+          typeof theme === "string" ? theme : "light"
+        }`}
       >
-        <EditorToolbars />
-      </BlockNoteView>
+        <BlockNoteView
+          editor={editor}
+          editable={true}
+          sideMenu={false}
+          slashMenu={true}
+          theme={theme}
+          onChange={() => {
+            // Call the onChange handler provided by the native side
+            if (onChange) {
+              onChange(editor.topLevelBlocks);
+            }
+          }}
+          formattingToolbar={false}
+          htmlAttributes={{
+            editor: {
+              class: `blocknote-editor custom-editor theme-${
+                typeof theme === "string" ? theme : "light"
+              }`,
+              style:
+                "height: 100%; min-height: 150px; width: 100%; user-select: text; -webkit-touch-callout: none;",
+            },
+            block: {
+              style: "margin: 0.5em 0;",
+            },
+          }}
+        >
+          <EditorToolbars />
+        </BlockNoteView>
 
-      <KeyboardToolbarWrapper
-        editor={editor}
-        onCreatePageLink={handleCreatePageLink}
-        keyboardHeight={keyboardHeight}
-        isKeyboardVisible={isKeyboardVisible}
-        theme={typeof theme === "string" ? theme : "light"}
-      />
+        <KeyboardToolbarWrapper
+          editor={editor}
+          onCreatePageLink={handleCreatePageLink}
+          keyboardHeight={keyboardHeight}
+          isKeyboardVisible={isKeyboardVisible}
+          theme={typeof theme === "string" ? theme : "light"}
+        />
 
-      <ConfirmDialog
-        show={showDeleteConfirm}
-        title="Delete Page"
-        message="Are you sure you want to delete this page? This action cannot be undone."
-        confirmText="Delete"
-        cancelText="Cancel"
-        onConfirm={handleDeleteCurrentPage}
-        onCancel={() => setShowDeleteConfirm(false)}
-      />
+        <ConfirmDialog
+          show={showDeleteConfirm}
+          title="Delete Page"
+          message="Are you sure you want to delete this page? This action cannot be undone."
+          confirmText="Delete"
+          cancelText="Cancel"
+          onConfirm={handleDeleteCurrentPage}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      </div>
     </div>
   );
 });

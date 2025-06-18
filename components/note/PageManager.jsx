@@ -1,5 +1,8 @@
 import { Alert } from "react-native";
 import Toast from "react-native-toast-message";
+import React, { useState } from "react";
+import { v4 as uuidv4 } from "uuid";
+import ConfirmDialog from "./ConfirmDialog";
 
 /**
  * PageManager - Utility functions for managing pages
@@ -127,52 +130,121 @@ const PageManager = {
         return;
       }
 
-      Alert.alert(
-        "Delete Page",
-        `Are you sure you want to delete "${page.title}"? This action cannot be undone.`,
-        [
-          {
-            text: "Cancel",
-            style: "cancel",
-            onPress: () => resolve(false),
-          },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await deletePage(page.id);
+      // Create a component that will render the confirm dialog
+      const DeleteConfirmationWrapper = () => {
+        const [showDialog, setShowDialog] = useState(true);
 
-                Toast.show({
-                  type: "success",
-                  text1: "Success",
-                  text2: "Page deleted",
-                  visibilityTime: 2000,
-                });
+        const handleCancel = () => {
+          setShowDialog(false);
+          resolve(false);
+        };
 
-                // Navigate back to parent page or home
-                if (page.parentId) {
-                  router.replace(`/note/${page.parentId}`);
-                } else {
-                  router.replace("/home");
-                }
+        const handleConfirm = async () => {
+          setShowDialog(false);
+          try {
+            await deletePage(page.id);
 
-                resolve(true);
-              } catch (error) {
-                console.error("Error deleting page:", error);
-                Toast.show({
-                  type: "error",
-                  text1: "Error",
-                  text2: "Failed to delete page",
-                  visibilityTime: 2000,
-                });
-                resolve(false);
-              }
+            Toast.show({
+              type: "success",
+              text1: "Success",
+              text2: "Page deleted",
+              visibilityTime: 2000,
+            });
+
+            // Navigate back to parent page or home
+            if (page.parentId) {
+              router.replace(`/note/${page.parentId}`);
+            } else {
+              router.replace("/home");
+            }
+
+            resolve(true);
+          } catch (error) {
+            console.error("Error deleting page:", error);
+            Toast.show({
+              type: "error",
+              text1: "Error",
+              text2: "Failed to delete page",
+              visibilityTime: 2000,
+            });
+            resolve(false);
+          }
+        };
+
+        return (
+          <ConfirmDialog
+            visible={showDialog}
+            title="Delete Page"
+            message={`Are you sure you want to delete "${page.title}"? This action cannot be undone.`}
+            confirmText="Delete"
+            cancelText="Cancel"
+            onConfirm={handleConfirm}
+            onCancel={handleCancel}
+          />
+        );
+      };
+
+      // Render the confirmation dialog
+      const dialogComponent = <DeleteConfirmationWrapper />;
+
+      // The dialog component will handle the resolve callbacks
+      // We need to actually render this component somewhere in the React tree
+      // This is typically handled by a modal service or context
+      // For now, we'll use a global modal service pattern
+      if (global.showModal && typeof global.showModal === "function") {
+        global.showModal(dialogComponent);
+      } else {
+        console.warn(
+          "No global modal service available, falling back to Alert"
+        );
+        // Fallback to Alert if no modal service is available
+        Alert.alert(
+          "Delete Page",
+          `Are you sure you want to delete "${page.title}"? This action cannot be undone.`,
+          [
+            {
+              text: "Cancel",
+              style: "cancel",
+              onPress: () => resolve(false),
             },
-          },
-        ],
-        { cancelable: true }
-      );
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: async () => {
+                try {
+                  await deletePage(page.id);
+
+                  Toast.show({
+                    type: "success",
+                    text1: "Success",
+                    text2: "Page deleted",
+                    visibilityTime: 2000,
+                  });
+
+                  // Navigate back to parent page or home
+                  if (page.parentId) {
+                    router.replace(`/note/${page.parentId}`);
+                  } else {
+                    router.replace("/home");
+                  }
+
+                  resolve(true);
+                } catch (error) {
+                  console.error("Error deleting page:", error);
+                  Toast.show({
+                    type: "error",
+                    text1: "Error",
+                    text2: "Failed to delete page",
+                    visibilityTime: 2000,
+                  });
+                  resolve(false);
+                }
+              },
+            },
+          ],
+          { cancelable: true }
+        );
+      }
     });
   },
 

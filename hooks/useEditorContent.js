@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import debounce from "lodash.debounce";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   sanitizeContentBlocks,
   createDefaultContent,
@@ -41,12 +42,80 @@ const useEditorContent = (
   const [isUndoRedoOperation, setIsUndoRedoOperation] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const [lastBlockCount, setLastBlockCount] = useState(0);
+  const [lastMajorChange, setLastMajorChange] = useState(null);
 
   // Refs
   const editorRef = useRef(null);
   const saveTimer = useRef(null);
   const savingIndicatorTimer = useRef(null);
   const savingOperationInProgress = useRef(false);
+  const changeTimerRef = useRef(null);
+
+  // Generate history storage keys based on page ID
+  const getUndoStackKey = useCallback(() => {
+    return currentPage?.id ? `undoStack_${currentPage.id}` : null;
+  }, [currentPage?.id]);
+
+  const getRedoStackKey = useCallback(() => {
+    return currentPage?.id ? `redoStack_${currentPage.id}` : null;
+  }, [currentPage?.id]);
+
+  /**
+   * Save undo/redo stacks to AsyncStorage
+   */
+  const persistHistoryStacks = useCallback(async () => {
+    if (!currentPage?.id) return;
+
+    try {
+      const undoStackKey = getUndoStackKey();
+      const redoStackKey = getRedoStackKey();
+
+      if (undoStackKey && undoStack.length > 0) {
+        await AsyncStorage.setItem(undoStackKey, JSON.stringify(undoStack));
+        console.log(`Saved undo stack with ${undoStack.length} items`);
+      }
+
+      if (redoStackKey && redoStack.length > 0) {
+        await AsyncStorage.setItem(redoStackKey, JSON.stringify(redoStack));
+        console.log(`Saved redo stack with ${redoStack.length} items`);
+      }
+    } catch (error) {
+      console.error("Error persisting history stacks:", error);
+    }
+  }, [currentPage?.id, undoStack, redoStack, getUndoStackKey, getRedoStackKey]);
+
+  /**
+   * Load undo/redo stacks from AsyncStorage
+   */
+  const loadHistoryStacks = useCallback(async () => {
+    if (!currentPage?.id) return;
+
+    try {
+      const undoStackKey = getUndoStackKey();
+      const redoStackKey = getRedoStackKey();
+
+      if (undoStackKey) {
+        const savedUndoStack = await AsyncStorage.getItem(undoStackKey);
+        if (savedUndoStack) {
+          const parsedUndoStack = JSON.parse(savedUndoStack);
+          setUndoStack(parsedUndoStack);
+          console.log(`Loaded undo stack with ${parsedUndoStack.length} items`);
+        }
+      }
+
+      if (redoStackKey) {
+        const savedRedoStack = await AsyncStorage.getItem(redoStackKey);
+        if (savedRedoStack) {
+          const parsedRedoStack = JSON.parse(savedRedoStack);
+          setRedoStack(parsedRedoStack);
+          console.log(`Loaded redo stack with ${parsedRedoStack.length} items`);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading history stacks:", error);
+    }
+  }, [currentPage?.id, getUndoStackKey, getRedoStackKey]);
 
   // Initialize content from page
   useEffect(() => {
@@ -109,12 +178,11 @@ const useEditorContent = (
         setInitialContent(sanitizedContent);
         setEditorContent(sanitizedContent);
         setLastSavedContent(sanitizedContent);
+        setLastBlockCount(sanitizedContent?.length || 0);
+        setLastMajorChange(sanitizedContent);
 
-        // Reset history
-        setUndoStack([]);
-        setRedoStack([]);
-        setCanUndo(false);
-        setCanRedo(false);
+        // Load history stacks from AsyncStorage
+        loadHistoryStacks();
 
         // After a short delay, allow saving again
         setTimeout(() => {
@@ -131,6 +199,8 @@ const useEditorContent = (
         setInitialContent(defaultContent);
         setEditorContent(defaultContent);
         setLastSavedContent(defaultContent);
+        setLastBlockCount(defaultContent?.length || 0);
+        setLastMajorChange(defaultContent);
 
         // After a short delay, allow saving again
         setTimeout(() => {
@@ -138,13 +208,24 @@ const useEditorContent = (
         }, 500);
       }
     }
-  }, [currentPage, title]);
+  }, [currentPage, title, loadHistoryStacks]);
 
   // Update canUndo and canRedo based on stack state
   useEffect(() => {
     setCanUndo(undoStack.length > 0);
     setCanRedo(redoStack.length > 0);
-  }, [undoStack, redoStack]);
+
+    // Persist history stacks whenever they change
+    if (!isInitialLoad && currentPage?.id) {
+      persistHistoryStacks();
+    }
+  }, [
+    undoStack,
+    redoStack,
+    isInitialLoad,
+    currentPage?.id,
+    persistHistoryStacks,
+  ]);
 
   // Function to compare content deeply
   const areContentsEqual = (content1, content2) => {
@@ -160,6 +241,106 @@ const useEditorContent = (
       return false;
     }
   };
+
+  /**
+   * Function to check if there's been a significant block structure change
+   * @param {Array} newContent - New content array
+   * @param {Array} oldContent - Old content array
+   * @returns {boolean} - True if there's been a significant change
+   */
+  const hasBlockStructureChanged = (newContent, oldContent) => {
+    if (!newContent || !oldContent) return true;
+
+    // Check if block count has changed (added or removed blocks)
+    if (newContent.length !== oldContent.length) {
+      console.log(
+        "Block count changed:",
+        oldContent.length,
+        "->",
+        newContent.length
+      );
+      return true;
+    }
+
+    // Check if block types have changed
+    for (let i = 0; i < newContent.length; i++) {
+      // If block type changed
+      if (newContent[i].type !== oldContent[i].type) {
+        console.log(
+          "Block type changed at index",
+          i,
+          ":",
+          oldContent[i].type,
+          "->",
+          newContent[i].type
+        );
+        return true;
+      }
+
+      // If block has children and they changed
+      if (newContent[i].children?.length !== oldContent[i].children?.length) {
+        console.log("Block children count changed at index", i);
+        return true;
+      }
+
+      // Check for significant property changes (like heading level)
+      if (newContent[i].props && oldContent[i].props) {
+        // For headings, check if level changed
+        if (
+          newContent[i].type === "heading" &&
+          newContent[i].props.level !== oldContent[i].props.level
+        ) {
+          console.log("Heading level changed at index", i);
+          return true;
+        }
+
+        // Check if alignment changed
+        if (
+          newContent[i].props.textAlignment !==
+          oldContent[i].props.textAlignment
+        ) {
+          console.log("Text alignment changed at index", i);
+          return true;
+        }
+
+        // Check if background color changed
+        if (
+          newContent[i].props.backgroundColor !==
+          oldContent[i].props.backgroundColor
+        ) {
+          console.log("Background color changed at index", i);
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
+  /**
+   * Check if the content has changed significantly enough to warrant adding to undo stack
+   * This is debounced to avoid adding too many states for minor changes
+   */
+  const checkForMajorContentChange = useCallback(
+    debounce((newContent) => {
+      if (
+        !lastMajorChange ||
+        hasBlockStructureChanged(newContent, lastMajorChange)
+      ) {
+        console.log("Major content change detected, adding to undo stack");
+
+        // Only add to undo stack if not during undo/redo operation
+        if (!isUndoRedoOperation && lastMajorChange) {
+          setUndoStack((prev) => [...prev, lastMajorChange]);
+          setRedoStack([]);
+        }
+
+        // Update the last major change
+        setLastMajorChange(newContent);
+      }
+    }, 1000), // 1 second debounce
+    [lastMajorChange, isUndoRedoOperation]
+  );
 
   // Debounced save function
   const debouncedSave = useCallback(
@@ -373,21 +554,27 @@ const useEditorContent = (
         return;
       }
 
-      // Add current content to undo stack if not an undo/redo operation
-      if (!isUndoRedoOperation && editorContent) {
-        setUndoStack((prev) => [...prev, editorContent]);
-        setRedoStack([]);
-      } else {
-        setIsUndoRedoOperation(false);
-      }
-
       // Update content state
       setEditorContent(newContent);
+
+      // Check for major content changes (debounced)
+      checkForMajorContentChange(newContent);
+
+      // Reset undo/redo operation flag after content change
+      if (isUndoRedoOperation) {
+        setIsUndoRedoOperation(false);
+      }
 
       // Save content
       debouncedSave(newContent);
     },
-    [editorContent, isUndoRedoOperation, debouncedSave, isInitialLoad]
+    [
+      editorContent,
+      isUndoRedoOperation,
+      debouncedSave,
+      isInitialLoad,
+      checkForMajorContentChange,
+    ]
   );
 
   // Force save function (non-debounced)
@@ -427,6 +614,7 @@ const useEditorContent = (
         clearTimeout(saveTimer.current);
       }
       debouncedSave.cancel();
+      checkForMajorContentChange.cancel();
 
       // Make sure content is properly structured as an array
       let contentToSave;
@@ -540,6 +728,7 @@ const useEditorContent = (
         console.log("Page force saved successfully to storage");
         setCurrentPage(savedPage);
         setLastSavedContent(contentToSave);
+        setLastMajorChange(contentToSave);
 
         // Save to Supabase if user is authenticated
         if (user && user.id) {
@@ -590,6 +779,7 @@ const useEditorContent = (
     debouncedSave,
     user,
     lastSavedContent,
+    checkForMajorContentChange,
   ]);
 
   // Clean up on unmount
@@ -597,6 +787,7 @@ const useEditorContent = (
     return () => {
       // Cancel any pending saves
       debouncedSave.cancel();
+      checkForMajorContentChange.cancel();
 
       // Clear any pending timers
       if (savingIndicatorTimer.current) {
@@ -607,8 +798,21 @@ const useEditorContent = (
       if (editorContent && currentPage && !isInitialLoad) {
         handleSave();
       }
+
+      // Persist history stacks before unmounting
+      if (currentPage?.id) {
+        persistHistoryStacks();
+      }
     };
-  }, [debouncedSave, handleSave, editorContent, currentPage, isInitialLoad]);
+  }, [
+    debouncedSave,
+    handleSave,
+    editorContent,
+    currentPage,
+    isInitialLoad,
+    persistHistoryStacks,
+    checkForMajorContentChange,
+  ]);
 
   return {
     editorContent,
@@ -632,6 +836,8 @@ const useEditorContent = (
     editorRef,
     handleContentChange,
     handleSave,
+    lastMajorChange,
+    setLastMajorChange,
   };
 };
 

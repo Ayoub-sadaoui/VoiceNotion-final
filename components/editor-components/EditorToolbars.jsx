@@ -22,7 +22,8 @@ const EditorToolbars = () => {
           style={{
             width: "96%",
             maxWidth: "100vw",
-            overflow: "visible",
+            position: "relative",
+            zIndex: 100,
           }}
         >
           <FormattingToolbar className="custom-formatting-toolbar bn-formatting-toolbar">

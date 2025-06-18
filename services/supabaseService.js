@@ -262,3 +262,108 @@ export const subscribeToNotes = (userId, callback) => {
 
   return subscription;
 };
+
+export const updateUserProfile = async (userData) => {
+  try {
+    console.log(
+      "Updating user profile with data:",
+      JSON.stringify(userData).substring(0, 100) + "..."
+    );
+
+    const { data, error } = await supabase.auth.updateUser({
+      data: userData,
+    });
+
+    if (error) {
+      console.error("Error updating user profile:", error);
+    } else {
+      console.log("User profile updated successfully");
+    }
+
+    return { data, error };
+  } catch (err) {
+    console.error("Exception in updateUserProfile:", err);
+    return { data: null, error: err };
+  }
+};
+
+export const updateUserAvatar = async (avatarUrl) => {
+  try {
+    console.log("Updating user avatar...");
+
+    // First get current user metadata
+    const currentUser = await getCurrentUser();
+    const currentMetadata = currentUser?.user_metadata || {};
+
+    // Log the current metadata
+    console.log(
+      "Current metadata before update:",
+      JSON.stringify({
+        has_metadata: !!currentMetadata,
+        has_full_name: !!currentMetadata.full_name,
+        has_avatar: !!currentMetadata.avatar_url,
+      })
+    );
+
+    // Create updated metadata with new avatar URL
+    const updatedMetadata = {
+      ...currentMetadata,
+      avatar_url: avatarUrl,
+    };
+
+    console.log(
+      "Sending avatar update with data length:",
+      avatarUrl ? avatarUrl.substring(0, 50) + "..." : "No avatar"
+    );
+
+    // Direct approach to update user metadata with avatar
+    const { data, error } = await supabase.auth.updateUser({
+      data: updatedMetadata,
+    });
+
+    if (error) {
+      console.error("Error updating avatar:", error);
+    } else {
+      console.log("Avatar update request sent successfully");
+
+      // Verify the update immediately
+      const updatedUser = await getCurrentUser();
+      console.log(
+        "Verification - User metadata after update:",
+        JSON.stringify({
+          has_avatar: !!updatedUser?.user_metadata?.avatar_url,
+          avatar_preview: updatedUser?.user_metadata?.avatar_url
+            ? updatedUser.user_metadata.avatar_url.substring(0, 30) + "..."
+            : "none",
+        })
+      );
+    }
+
+    return { data, error };
+  } catch (err) {
+    console.error("Exception in updateUserAvatar:", err);
+    return { data: null, error: err };
+  }
+};
+
+export const updateUserAvatarDirect = async (avatarUrl) => {
+  try {
+    console.log("Direct avatar update attempt...");
+
+    // Use a direct approach with minimal data
+    const { data, error } = await supabase.auth.updateUser({
+      data: { avatar_url: avatarUrl },
+    });
+
+    if (error) {
+      console.error("Error in direct avatar update:", error);
+    } else {
+      console.log("Direct avatar update request sent");
+    }
+
+    return { data, error };
+  } catch (err) {
+    console.error("Exception in direct avatar update:", err);
+    return { data: null, error: err };
+  }
+};

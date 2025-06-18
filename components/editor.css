@@ -152,8 +152,18 @@ body {
   background-color: white !important;
   border-bottom: 1px solid #eee !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
-  overflow-y: visible !important;
+  overflow-x: auto !important;
+  overflow-y: visible !important; /* Allow dropdowns to be visible */
   min-width: min-content !important; /* Ensure toolbar doesn't shrink smaller than content */
+  position: relative !important; /* Ensure proper positioning context for dropdowns */
+}
+
+/* Dark theme support for formatting toolbar */
+.theme-dark .custom-formatting-toolbar,
+.theme-dark .bn-container .bn-formatting-toolbar {
+  background-color: #1e1e1e !important;
+  border-bottom: 1px solid #333 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
 }
 
 /* Make formatting toolbar buttons stay in line */
@@ -282,4 +292,73 @@ body {
   .bn-heading-block h3 {
     font-size: 18px;
   }
+}
+
+/* Fix color picker dropdown visibility */
+.bn-container .bn-popover {
+  z-index: 9999 !important;
+  position: fixed !important;
+  overflow: visible !important;
+  max-height: none !important;
+  transform: none !important;
+}
+
+/* Ensure color picker menu is visible */
+.bn-container .bn-color-picker {
+  z-index: 10000 !important;
+  position: fixed !important;
+  overflow: visible !important;
+  background-color: white !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  border-radius: 8px !important;
+  padding: 8px !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  transform: none !important;
+}
+
+/* Dark theme support for color picker */
+.theme-dark .bn-container .bn-color-picker {
+  background-color: #1e1e1e !important;
+  border: 1px solid #333 !important;
+}
+
+/* Make sure color picker grid is properly displayed */
+.bn-container .bn-color-grid {
+  display: grid !important;
+  grid-template-columns: repeat(5, 1fr) !important;
+  gap: 4px !important;
+  overflow: visible !important;
+}
+
+/* Fix ALL dropdown menus visibility */
+.bn-container [role="menu"],
+.bn-container [role="listbox"],
+.bn-container .bn-popover,
+.bn-container .bn-dropdown,
+.bn-container .bn-menu,
+.bn-container .bn-color-picker,
+.bn-container .bn-block-type-dropdown-menu {
+  position: fixed !important;
+  z-index: 99999 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  max-height: none !important;
+  overflow: visible !important;
+  display: block !important;
+  pointer-events: auto !important;
+}
+
+/* Special handling for slash menu - ensure these styles don't override specific slash menu styles */
+.bn-container .bn-slash-menu {
+  /* These styles take precedence over the general dropdown styles */
+  z-index: 100000 !important; /* Higher z-index than other dropdowns */
+  width: 100vw !important; /* Use full viewport width */
+  max-width: 100vw !important; /* Use full viewport width */
+  left: 0 !important; /* Align to left edge of screen */
+  right: 0 !important; /* Extend to right edge of screen */
+  transform: none !important; /* Remove transform */
+  margin: 0 !important; /* Remove any margin */
+  padding: 0 !important; /* Remove any padding */
+  inset-inline-start: 0 !important; /* For RTL support */
+  inset-inline-end: 0 !important; /* For RTL support */
 }

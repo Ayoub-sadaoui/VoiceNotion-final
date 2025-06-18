@@ -120,6 +120,8 @@ const NoteScreen = () => {
     editorRef,
     handleContentChange,
     handleSave,
+    lastMajorChange,
+    setLastMajorChange,
   } = useEditorContent(
     currentPage,
     storageSavePage,
@@ -372,7 +374,8 @@ const NoteScreen = () => {
       setCurrentPage,
       setForceRefresh,
       editorRef,
-      setIsUndoRedoOperation
+      setIsUndoRedoOperation,
+      setLastMajorChange
     );
   }, [
     undoStack,
@@ -387,6 +390,7 @@ const NoteScreen = () => {
     setForceRefresh,
     editorRef,
     setIsUndoRedoOperation,
+    setLastMajorChange,
   ]);
 
   // Handle redo
@@ -403,7 +407,8 @@ const NoteScreen = () => {
       setCurrentPage,
       setForceRefresh,
       editorRef,
-      setIsUndoRedoOperation
+      setIsUndoRedoOperation,
+      setLastMajorChange
     );
   }, [
     redoStack,
@@ -418,6 +423,7 @@ const NoteScreen = () => {
     setForceRefresh,
     editorRef,
     setIsUndoRedoOperation,
+    setLastMajorChange,
   ]);
 
   // Insert transcription directly into the editor
@@ -636,7 +642,7 @@ const NoteScreen = () => {
     <SafeAreaView
       style={[
         styles.container,
-        { backgroundColor: theme.background, paddingTop: insets.top },
+        { backgroundColor: theme.background, paddingTop: 10 },
       ]}
     >
       <Stack.Screen

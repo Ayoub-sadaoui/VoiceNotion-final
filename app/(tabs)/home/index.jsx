@@ -19,6 +19,7 @@ import { useRouter, Link, useFocusEffect } from "expo-router";
 import { useTheme } from "../../../utils/themeContext";
 import { useAuth } from "../../../contexts/AuthContext";
 import ScreenHeader from "../../../components/ScreenHeader";
+import HomeHeader from "../../../components/HomeHeader";
 import FloatingActionButton from "../../../components/FloatingActionButton";
 import usePageStorage from "../../../hooks/usePageStorage";
 import { buildPageTree } from "../../../utils/pageUtils";
@@ -79,23 +80,69 @@ const PageTreeItem = ({
       swipeableRef.current.close();
     }
 
-    // Confirm deletion
-    Alert.alert(
-      "Delete Page",
-      `Are you sure you want to delete "${page.title}" and all its subpages?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          onPress: () => {
-            if (onDeletePage) {
-              onDeletePage(page.id);
-            }
+    // Create a component that will render the confirm dialog
+    const DeleteConfirmationWrapper = () => {
+      const [showDialog, setShowDialog] = useState(true);
+
+      const handleCancel = () => {
+        setShowDialog(false);
+        // Hide the modal
+        if (global.hideModal && typeof global.hideModal === "function") {
+          global.hideModal();
+        }
+      };
+
+      const handleConfirm = () => {
+        setShowDialog(false);
+        // Call the delete handler
+        if (onDeletePage) {
+          onDeletePage(page.id);
+        }
+        // Hide the modal
+        if (global.hideModal && typeof global.hideModal === "function") {
+          global.hideModal();
+        }
+      };
+
+      // Import the ConfirmDialog dynamically to avoid issues with web/native components
+      const ConfirmDialog =
+        require("../../../components/note/ConfirmDialog").default;
+
+      return (
+        <ConfirmDialog
+          visible={showDialog}
+          title="Delete Page"
+          message={`Are you sure you want to delete "${page.title}" and all its subpages?`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          onConfirm={handleConfirm}
+          onCancel={handleCancel}
+        />
+      );
+    };
+
+    // Check if we can use the modal service
+    if (global.showModal && typeof global.showModal === "function") {
+      global.showModal(<DeleteConfirmationWrapper />);
+    } else {
+      // Fallback to Alert if modal service isn't available
+      Alert.alert(
+        "Delete Page",
+        `Are you sure you want to delete "${page.title}" and all its subpages?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            onPress: () => {
+              if (onDeletePage) {
+                onDeletePage(page.id);
+              }
+            },
+            style: "destructive",
           },
-          style: "destructive",
-        },
-      ]
-    );
+        ]
+      );
+    }
   }, [page.id, onDeletePage]);
 
   // Render right swipe actions
@@ -252,8 +299,8 @@ const PageTreeItem = ({
                 onPress={handleAddSubpage}
                 hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
               >
-                <Feather
-                  name="plus"
+                <Ionicons
+                  name="add-outline"
                   size={18}
                   color={theme?.tertiaryText || "#999999"}
                 />
@@ -398,7 +445,7 @@ export default function HomeScreen() {
           text1: "Page Deleted",
           text2: "The page and its subpages were deleted successfully",
           position: "top",
-          visibilityTime: 3000,
+          visibilityTime: 5000,
         });
       }
     } catch (error) {
@@ -410,7 +457,7 @@ export default function HomeScreen() {
         text1: "Error",
         text2: "Failed to delete page",
         position: "bottom",
-        visibilityTime: 3000,
+        visibilityTime: 5000,
       });
     }
   };
@@ -468,7 +515,7 @@ export default function HomeScreen() {
           text1: "Authentication Required",
           text2: "Please sign in to create notes",
           position: "bottom",
-          visibilityTime: 3000,
+          visibilityTime: 5000,
         });
         return;
       }
@@ -496,7 +543,7 @@ export default function HomeScreen() {
         text1: "Error",
         text2: "Failed to create new page. Please try again.",
         position: "bottom",
-        visibilityTime: 3000,
+        visibilityTime: 5000,
       });
     }
   };
@@ -510,7 +557,7 @@ export default function HomeScreen() {
           text1: "Authentication Required",
           text2: "Please sign in to create notes",
           position: "bottom",
-          visibilityTime: 3000,
+          visibilityTime: 5000,
         });
         return;
       }
@@ -546,7 +593,7 @@ export default function HomeScreen() {
         text1: "Error",
         text2: "Failed to create subpage. Please try again.",
         position: "bottom",
-        visibilityTime: 3000,
+        visibilityTime: 5000,
       });
     }
   };
@@ -623,10 +670,7 @@ export default function HomeScreen() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
     >
-      <ScreenHeader
-        title={getGreeting()}
-        subtitle="What would you like to document today?"
-      />
+      <HomeHeader user={user} />
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -725,7 +769,7 @@ export default function HomeScreen() {
                               text2:
                                 "Sample pages have been added to help you get started",
                               position: "top",
-                              visibilityTime: 3000,
+                              visibilityTime: 5000,
                             });
                           } catch (error) {
                             console.error("Error creating test pages:", error);
@@ -734,7 +778,7 @@ export default function HomeScreen() {
                               text1: "Error",
                               text2: "Failed to create example pages",
                               position: "bottom",
-                              visibilityTime: 3000,
+                              visibilityTime: 5000,
                             });
                           }
                         }}
@@ -760,20 +804,13 @@ export default function HomeScreen() {
   );
 }
 
-// Get appropriate greeting based on time of day
-const getGreeting = () => {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
   headerButton: {
     padding: 8,
+    borderRadius: 20,
     marginLeft: 8,
   },
   greetingContainer: {

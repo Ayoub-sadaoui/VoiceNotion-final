@@ -16,6 +16,27 @@ import "./keyboard-toolbar.css";
 import { BlockNoteEditor } from "./editor-components";
 import TranscriptionHandler from "./editor-components/TranscriptionHandler";
 
+// Add this style tag at the top of the component
+const dropdownFixStyle = `
+  /* Fix for dropdown menus visibility */
+  .bn-container [role="menu"],
+  .bn-container [role="listbox"],
+  .bn-container .bn-popover,
+  .bn-container .bn-dropdown,
+  .bn-container .bn-menu,
+  .bn-container .bn-color-picker,
+  .bn-container .bn-block-type-dropdown-menu {
+    position: fixed !important;
+    z-index: 99999 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    transform: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+  }
+`;
+
 // Main editor component
 const BlockNoteEditorWeb = forwardRef((props, ref) => {
   // Create a ref to the BlockNoteEditor component
@@ -172,7 +193,12 @@ const BlockNoteEditorWeb = forwardRef((props, ref) => {
     recentTranscription ? Date.now() : 0
   }`;
 
-  return <BlockNoteEditor {...props} ref={editorRef} key={editorKey} />;
+  return (
+    <>
+      <style dangerouslySetInnerHTML={{ __html: dropdownFixStyle }} />
+      <BlockNoteEditor {...props} ref={editorRef} key={editorKey} />
+    </>
+  );
 });
 
 export default BlockNoteEditorWeb;

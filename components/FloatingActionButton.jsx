@@ -87,8 +87,8 @@ const FloatingActionButton = ({ onPress, icon, label, isExtended = false }) => {
 const styles = StyleSheet.create({
   fabContainer: {
     position: "absolute",
-    bottom: 20,
-    right: 20,
+    bottom: 120,
+    right: 16,
     borderRadius: 28,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
