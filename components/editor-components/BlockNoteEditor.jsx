@@ -9,7 +9,6 @@ import React, {
   useCallback,
 } from "react";
 import { BlockNoteView } from "@blocknote/mantine";
-import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { useCreateBlockNote } from "@blocknote/react";
 import "../editor.css";
@@ -23,6 +22,8 @@ import KeyboardToolbarWrapper from "./KeyboardToolbarWrapper";
 import ConfirmDialog from "./ConfirmDialog";
 import editorSchema from "./editorSchema";
 import TranscriptionHandler from "./TranscriptionHandler";
+import { initFontLoaders } from "./fontLoader";
+import { initializeEditor } from "./editorInitializer";
 
 // Dropdown fix style
 const dropdownFixStyle = `
@@ -84,6 +85,20 @@ const BlockNoteEditor = forwardRef((props, ref) => {
       document.body.classList.add(`theme-${themeString}`);
     }
   }, [theme]);
+
+  // Initialize the font loader when the component mounts
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      // Initialize fonts and editor fixes
+      initFontLoaders();
+      initializeEditor();
+
+      // For extra safety, re-run initializer after a delay
+      setTimeout(() => {
+        initializeEditor();
+      }, 1500);
+    }
+  }, []);
 
   /**
    * Helper function to safely access the editor's internal storage
