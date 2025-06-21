@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "VoiceNotion",
-    "slug": "voicenotion",
-    "scheme": "voicenotion",
+    "name": "sayNote",
+    "slug": "sayNote",
+    "scheme": "sayNote",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,12 +15,12 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.voicenotion.app",
+      "bundleIdentifier": "com.sayNote.app",
       "buildNumber": "1",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "VoiceNotion needs access to your microphone to record voice notes and commands.",
-        "NSPhotoLibraryUsageDescription": "VoiceNotion needs access to your photo library to allow you to add images to your notes.",
-        "NSCameraUsageDescription": "VoiceNotion needs access to your camera to allow you to take photos for your notes.",
+        "NSMicrophoneUsageDescription": "sayNote needs access to your microphone to record voice notes and commands.",
+        "NSPhotoLibraryUsageDescription": "sayNote needs access to your photo library to allow you to add images to your notes.",
+        "NSCameraUsageDescription": "sayNote needs access to your camera to allow you to take photos for your notes.",
         "UIBackgroundModes": ["audio"]
       }
     },
@@ -29,7 +29,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.voicenotion.app",
+      "package": "com.sayNote.app",
       "versionCode": 1,
       "permissions": [
         "RECORD_AUDIO",
@@ -43,7 +43,7 @@
           "autoVerify": true,
           "data": [
             {
-              "scheme": "voicenotion"
+              "scheme": "sayNote"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
@@ -59,13 +59,13 @@
       [
         "expo-secure-store",
         {
-          "faceIDPermission": "VoiceNotion needs to access your Face ID to secure your notes."
+          "faceIDPermission": "sayNote needs to access your Face ID to secure your notes."
         }
       ],
       [
         "expo-av",
         {
-          "microphonePermission": "VoiceNotion needs access to your microphone to record voice notes and commands."
+          "microphonePermission": "sayNote needs access to your microphone to record voice notes and commands."
         }
       ]
     ],
@@ -80,7 +80,7 @@
     "experiments": {
       "tsconfigPaths": true
     },
-    "owner": "voicenotion",
+    "owner": "sayNote",
     "runtimeVersion": {
       "policy": "appVersion"
     },

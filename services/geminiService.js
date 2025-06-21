@@ -1386,7 +1386,7 @@ export const processVoiceCommandWithGemini = async (
           role: "user", // First user message acts as system instruction
           parts: [
             {
-              text: `You are an AI assistant specialized in parsing voice commands for a block-based note editor called VoiceNotion. Your task is to analyze a voice command and the current editor content, then return a structured JSON response with the appropriate action to take.
+              text: `You are an AI assistant specialized in parsing voice commands for a block-based note editor called sayNote. Your task is to analyze a voice command and the current editor content, then return a structured JSON response with the appropriate action to take.
 
 AVAILABLE COMMAND TYPES:
 

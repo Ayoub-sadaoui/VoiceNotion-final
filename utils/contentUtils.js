@@ -339,7 +339,29 @@ export const insertContentDirectly = (
     });
 
     if (validBlocks.length === 0) {
-      console.error("No valid blocks to insert");
+      // Show a user-friendly toast if nothing was spoken or no valid block
+      if (typeof window !== "undefined" && window.Toast) {
+        window.Toast.show({
+          type: "info",
+          text1: "No Speech Detected",
+          text2: "You didn't say anything, so nothing was added.",
+          visibilityTime: 2000,
+        });
+      } else {
+        // Fallback for environments where window.Toast is not available
+        try {
+          const Toast = require("react-native-toast-message").default;
+          Toast.show({
+            type: "info",
+            text1: "No Speech Detected",
+            text2: "You didn't say anything, so nothing was added.",
+            visibilityTime: 2000,
+          });
+        } catch (e) {
+          // If Toast is not available, just log
+          console.warn("No valid blocks to insert and Toast not available");
+        }
+      }
       return false;
     }
 

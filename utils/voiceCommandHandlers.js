@@ -275,18 +275,15 @@ export const handleInsertContentCommand = async (
         console.log("Fell back to inserting raw text");
       }
 
-      if (inserted) {
+      if (
+        inserted &&
+        typeof content === "string" &&
+        content.trim().length > 0
+      ) {
         Toast.show({
           type: "success",
           text1: "Success",
           text2: "Content added",
-          visibilityTime: 2000,
-        });
-      } else {
-        Toast.show({
-          type: "error",
-          text1: "Error",
-          text2: "Failed to add content",
           visibilityTime: 2000,
         });
       }
@@ -296,18 +293,15 @@ export const handleInsertContentCommand = async (
       // Fall back to inserting as raw text if the processing fails
       const inserted = await insertTranscriptionDirectly(content, true);
 
-      if (inserted) {
+      if (
+        inserted &&
+        typeof content === "string" &&
+        content.trim().length > 0
+      ) {
         Toast.show({
           type: "success",
           text1: "Success",
           text2: "Content added (as plain text)",
-          visibilityTime: 2000,
-        });
-      } else {
-        Toast.show({
-          type: "error",
-          text1: "Error",
-          text2: "Failed to add content",
           visibilityTime: 2000,
         });
       }

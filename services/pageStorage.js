@@ -399,7 +399,7 @@ const createTestPages = async (userId = null) => {
     // Create some child pages
     const welcomePage = await createPage(
       rootPage.id,
-      "Welcome to VoiceNotion",
+      "Welcome to sayNote",
       "👋",
       userId
     );

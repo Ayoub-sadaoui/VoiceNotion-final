@@ -48,9 +48,7 @@ export default function AboutScreen() {
             >
               <Ionicons name="document-text" size={40} color="#FFF" />
             </View>
-            <Text style={[styles.appName, { color: theme.text }]}>
-              VoiceNotion
-            </Text>
+            <Text style={[styles.appName, { color: theme.text }]}>sayNote</Text>
             <Text style={[styles.appVersion, { color: theme.secondaryText }]}>
               Version 1.0.0
             </Text>
@@ -63,7 +61,7 @@ export default function AboutScreen() {
             Description
           </Text>
           <Text style={[styles.description, { color: theme.secondaryText }]}>
-            VoiceNotion is a seamless, mobile-first note-taking and document
+            sayNote is a seamless, mobile-first note-taking and document
             creation application where users can effortlessly capture,
             structure, and refine their thoughts primarily through voice
             commands, complemented by a powerful and intuitive block-based
@@ -244,7 +242,7 @@ export default function AboutScreen() {
             Credits
           </Text>
           <Text style={[styles.credits, { color: theme.secondaryText }]}>
-            © 2023 VoiceNotion{"\n"}
+            © 2023 sayNote{"\n"}
             Made with ❤️ for productivity
           </Text>
         </View>

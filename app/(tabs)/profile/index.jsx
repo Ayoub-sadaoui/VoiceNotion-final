@@ -264,7 +264,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         <Text style={[styles.versionText, { color: theme.tertiaryText }]}>
-          VoiceNotion v1.0.0
+          sayNote v1.0.0
         </Text>
       </ScrollView>
     </SafeAreaView>

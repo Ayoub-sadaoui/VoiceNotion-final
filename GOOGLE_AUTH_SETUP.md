@@ -1,6 +1,6 @@
-# Google OAuth Setup for VoiceNotion
+# Google OAuth Setup for sayNote
 
-This guide will help you set up Google OAuth for your VoiceNotion app using Supabase.
+This guide will help you set up Google OAuth for your sayNote app using Supabase.
 
 ## 1. Create a Google OAuth Client
 
@@ -9,14 +9,14 @@ This guide will help you set up Google OAuth for your VoiceNotion app using Supa
 3. Navigate to "APIs & Services" > "Credentials"
 4. Click on "Create Credentials" > "OAuth client ID"
 5. Select "Web application" as the application type
-6. Add a name for your OAuth client (e.g., "VoiceNotion OAuth")
+6. Add a name for your OAuth client (e.g., "sayNote OAuth")
 7. Add authorized JavaScript origins:
    - For development with Expo: `https://auth.expo.io`
    - For development: `http://localhost:8081`
    - For production: Your app's domain (if applicable)
 8. Add authorized redirect URIs:
    - For development: `https://[YOUR_SUPABASE_PROJECT_REF].supabase.co/auth/v1/callback`
-   - For Expo: `https://auth.expo.io/@your-expo-username/voicenotion`
+   - For Expo: `https://auth.expo.io/@your-expo-username/sayNote`
    - For production: Same as above
 9. Click "Create"
 10. Note your Client ID and Client Secret
@@ -29,9 +29,9 @@ This guide will help you set up Google OAuth for your VoiceNotion app using Supa
 4. Enable the provider by toggling the switch
 5. Enter the Client ID and Client Secret from the Google Cloud Console
 6. Add the following redirect URLs:
-   - `voicenotion://auth/callback`
+   - `sayNote://auth/callback`
    - `exp://localhost:8081/--/auth/callback` (for Expo development)
-   - `https://auth.expo.io/@your-expo-username/voicenotion` (for Expo Go)
+   - `https://auth.expo.io/@your-expo-username/sayNote` (for Expo Go)
    - Your production URL if applicable
 7. Save the changes
 
@@ -69,8 +69,8 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
   - The redirect URIs in both Google Cloud Console and Supabase match exactly
   - For Expo development, use `exp://localhost:8081/--/auth/callback`
-  - For Expo Go, use `https://auth.expo.io/@your-expo-username/voicenotion`
-  - For standalone apps, use `voicenotion://auth/callback`
+  - For Expo Go, use `https://auth.expo.io/@your-expo-username/sayNote`
+  - For standalone apps, use `sayNote://auth/callback`
 
 - **Browser Not Opening**:
 

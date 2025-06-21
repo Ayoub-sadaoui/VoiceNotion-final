@@ -1,8 +1,8 @@
-VoiceNotion Voice Command Examples
+sayNote Voice Command Examples
 
 ## Structured Note Examples
 
-Here are examples of voice commands you can use with VoiceNotion to create well-structured notes:
+Here are examples of voice commands you can use with sayNote to create well-structured notes:
 
 ### 1. Meeting Notes
 

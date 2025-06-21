@@ -284,6 +284,16 @@ const VoiceRecorder = ({
       setTranscription(result.transcription);
       console.log("Transcription successful:", result.transcription);
 
+      // If transcription is empty or only whitespace, show a toast and exit
+      if (!result.transcription || !result.transcription.trim()) {
+        showToast({
+          type: "info",
+          message: "No speech detected. Nothing was added.",
+          duration: 2000,
+        });
+        return;
+      }
+
       showToast({
         type: "success",
         message: isAIMode ? "Processing question..." : "Processing command...",

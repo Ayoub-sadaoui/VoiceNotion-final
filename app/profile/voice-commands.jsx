@@ -6,11 +6,11 @@ import { useTheme } from "../../utils/themeContext";
 
 // Import the voice commands content
 const voiceCommandsContent = `
-VoiceNotion Voice Command Examples
+sayNote Voice Command Examples
 
 ## Structured Note Examples
 
-Here are examples of voice commands you can use with VoiceNotion to create well-structured notes:
+Here are examples of voice commands you can use with sayNote to create well-structured notes:
 
 ### 1. Meeting Notes
 
@@ -178,7 +178,7 @@ export default function VoiceCommandsScreen() {
             Voice Commands Guide
           </Text>
           <Text style={[styles.headerSubtitle, { color: theme.secondaryText }]}>
-            Examples and tips for using voice with VoiceNotion
+            Examples and tips for using voice with sayNote
           </Text>
         </View>
 

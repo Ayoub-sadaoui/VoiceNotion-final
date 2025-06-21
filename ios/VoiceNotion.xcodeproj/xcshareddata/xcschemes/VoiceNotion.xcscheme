@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-               BuildableName = "VoiceNotion.app"
-               BlueprintName = "VoiceNotion"
-               ReferencedContainer = "container:VoiceNotion.xcodeproj">
+               BuildableName = "sayNote.app"
+               BlueprintName = "sayNote"
+               ReferencedContainer = "container:sayNote.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "00E356ED1AD99517003FC87E"
-               BuildableName = "VoiceNotionTests.xctest"
-               BlueprintName = "VoiceNotionTests"
-               ReferencedContainer = "container:VoiceNotion.xcodeproj">
+               BuildableName = "sayNoteTests.xctest"
+               BlueprintName = "sayNoteTests"
+               ReferencedContainer = "container:sayNote.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -55,9 +55,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-            BuildableName = "VoiceNotion.app"
-            BlueprintName = "VoiceNotion"
-            ReferencedContainer = "container:VoiceNotion.xcodeproj">
+            BuildableName = "sayNote.app"
+            BlueprintName = "sayNote"
+            ReferencedContainer = "container:sayNote.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -72,9 +72,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-            BuildableName = "VoiceNotion.app"
-            BlueprintName = "VoiceNotion"
-            ReferencedContainer = "container:VoiceNotion.xcodeproj">
+            BuildableName = "sayNote.app"
+            BlueprintName = "sayNote"
+            ReferencedContainer = "container:sayNote.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

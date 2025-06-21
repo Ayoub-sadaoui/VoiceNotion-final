@@ -1,6 +1,6 @@
-# VoiceNotion
+# sayNote
 
-VoiceNotion is a voice-enabled note-taking application built with Expo and React Native. It allows users to create and edit notes using voice commands through a powerful block-based editor.
+sayNote is a voice-enabled note-taking application built with Expo and React Native. It allows users to create and edit notes using voice commands through a powerful block-based editor.
 
 ## Features
 
@@ -60,7 +60,7 @@ VoiceNotion is a voice-enabled note-taking application built with Expo and React
 
 ## Authentication & Data Sync
 
-VoiceNotion uses Supabase for user authentication and data synchronization:
+sayNote uses Supabase for user authentication and data synchronization:
 
 - **Authentication**: Email/password authentication with secure token storage
 - **Note Storage**: Notes are stored in Supabase PostgreSQL database with real-time capabilities
@@ -82,7 +82,7 @@ This project now includes:
 
 ## Voice Command Content Editing
 
-VoiceNotion supports editing content through voice commands, which enables users to format text, select content, replace text, modify blocks, and perform undo/redo operations using their voice.
+sayNote supports editing content through voice commands, which enables users to format text, select content, replace text, modify blocks, and perform undo/redo operations using their voice.
 
 ### Available Voice Commands
 

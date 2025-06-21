@@ -131,7 +131,7 @@ export default function LoginScreen() {
 
       <View style={styles.header}>
         <Text style={styles.title}>Welcome to</Text>
-        <Text style={styles.appName}>VoiceNotion</Text>
+        <Text style={styles.appName}>sayNote</Text>
       </View>
 
       <View style={styles.form}>

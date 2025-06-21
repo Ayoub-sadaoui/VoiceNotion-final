@@ -1,24 +1,24 @@
-# VoiceNotion: Comprehensive Project Documentation
+# sayNote: Comprehensive Project Documentation
 
 ## 1. Business Model Canvas
 
-This section outlines the business model for VoiceNotion, providing a strategic overview of the application's value proposition, customer segments, and revenue streams.
+This section outlines the business model for sayNote, providing a strategic overview of the application's value proposition, customer segments, and revenue streams.
 
-| Category                | Description                                                                                                                              |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Value Propositions**  | Voice-first note-taking, seamless cross-device sync, powerful block-based editor, offline access, and intuitive UI.                        |
-| **Customer Segments**   | Students, professionals, writers, and anyone who needs a quick and efficient way to capture and organize their thoughts.                   |
-| **Channels**            | App Store, Google Play Store, official website, and social media marketing.                                                              |
-| **Customer Relationships**| In-app support, community forums, and regular updates with new features and improvements.                                                |
-| **Revenue Streams**     | Freemium model with a free tier and a premium subscription for advanced features like unlimited voice commands, and additional storage.     |
-| **Key Activities**      | App development, marketing, customer support, and maintaining the backend infrastructure.                                                 |
-| **Key Resources**       | Development team, backend infrastructure (Supabase), and marketing budget.                                                               |
-| **Key Partners**        | Supabase for backend services, and potentially other technology providers for voice recognition or AI-powered features.                |
-| **Cost Structure**      | Development costs, marketing expenses, and subscription fees for backend services.                                                       |
+| Category                   | Description                                                                                                                             |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Value Propositions**     | Voice-first note-taking, seamless cross-device sync, powerful block-based editor, offline access, and intuitive UI.                     |
+| **Customer Segments**      | Students, professionals, writers, and anyone who needs a quick and efficient way to capture and organize their thoughts.                |
+| **Channels**               | App Store, Google Play Store, official website, and social media marketing.                                                             |
+| **Customer Relationships** | In-app support, community forums, and regular updates with new features and improvements.                                               |
+| **Revenue Streams**        | Freemium model with a free tier and a premium subscription for advanced features like unlimited voice commands, and additional storage. |
+| **Key Activities**         | App development, marketing, customer support, and maintaining the backend infrastructure.                                               |
+| **Key Resources**          | Development team, backend infrastructure (Supabase), and marketing budget.                                                              |
+| **Key Partners**           | Supabase for backend services, and potentially other technology providers for voice recognition or AI-powered features.                 |
+| **Cost Structure**         | Development costs, marketing expenses, and subscription fees for backend services.                                                      |
 
 ## 2. Core Features & Functionalities
 
-This section provides a detailed breakdown of VoiceNotion's key features.
+This section provides a detailed breakdown of sayNote's key features.
 
 ### Note Management
 

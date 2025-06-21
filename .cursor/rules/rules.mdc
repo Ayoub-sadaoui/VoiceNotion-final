@@ -57,7 +57,7 @@ Documentation: Document key functions, components, and voice command intents
 Cross-Platform Compatibility: Ensure features work consistently on both iOS and Android
 Native Device Features: Properly request and handle permissions for microphone access
 Performance: Optimize for mobile performance, including minimizing lag during voice input
-description: Guidelines for building DOM components in VoiceNotion using Expo's DOM component feature and BlockNote.js
+description: Guidelines for building DOM components in sayNote using Expo's DOM component feature and BlockNote.js
 alwaysApply: true
 
 DOM Component Development Rules

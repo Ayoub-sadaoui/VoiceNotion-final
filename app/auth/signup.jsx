@@ -78,7 +78,7 @@ export default function SignupScreen() {
           <View style={styles.header}>
             <Text style={styles.title}>Create Account</Text>
             <Text style={styles.subtitle}>
-              Join VoiceNotion and start creating notes with your voice
+              Join sayNote and start creating notes with your voice
             </Text>
           </View>
 

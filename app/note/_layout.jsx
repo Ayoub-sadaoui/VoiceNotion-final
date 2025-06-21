@@ -1,6 +1,6 @@
 import { Stack } from "expo-router";
 import { useTheme } from "../../utils/themeContext";
-import { StatusBar } from "react-native";
+import { StatusBar, View } from "react-native";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 
@@ -18,7 +18,7 @@ export default function NoteLayout() {
   }, []);
 
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
       <ExpoStatusBar hidden={true} />
       <Stack
         screenOptions={{
@@ -26,6 +26,6 @@ export default function NoteLayout() {
           contentStyle: { backgroundColor: theme.background },
         }}
       />
-    </>
+    </View>
   );
 }

@@ -21,7 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Maximum number of recent searches to store
 const MAX_RECENT_SEARCHES = 5;
-const RECENT_SEARCHES_KEY = "voicenotion_recent_searches";
+const RECENT_SEARCHES_KEY = "sayNote_recent_searches";
 
 export default function SearchScreen() {
   const { theme } = useTheme();

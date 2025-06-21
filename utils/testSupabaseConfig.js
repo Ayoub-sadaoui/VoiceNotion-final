@@ -80,7 +80,7 @@ export const testGoogleOAuthConfig = () => {
   console.log("Supabase Anon Key:", supabaseAnonKey ? "✅ Set" : "❌ Not set");
 
   // Print redirect URL that will be used
-  const redirectUrl = "voicenotion://auth/callback";
+  const redirectUrl = "sayNote://auth/callback";
   console.log("Redirect URL that will be used:", redirectUrl);
 
   console.log("\nVerify that this redirect URL is registered in:");

@@ -2,7 +2,7 @@
  * Voice Command Patterns
  *
  * This file defines the patterns and examples for voice commands
- * that can be used for content editing in VoiceNotion.
+ * that can be used for content editing in sayNote.
  */
 
 // Command categories for organizing command patterns

@@ -12,7 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Key for storing recently used emojis
-const RECENT_EMOJIS_KEY = "voicenotion_recent_emojis";
+const RECENT_EMOJIS_KEY = "sayNote_recent_emojis";
 const MAX_RECENT_EMOJIS = 16;
 
 // Common emojis for page icons

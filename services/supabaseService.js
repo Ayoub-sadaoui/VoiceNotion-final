@@ -141,7 +141,7 @@ export const signInWithGoogle = async () => {
   const redirectUrl =
     Platform.OS === "web"
       ? "http://localhost:8081/auth/callback"
-      : "voicenotion://auth/callback";
+      : "sayNote://auth/callback";
 
   console.log("Using redirect URL:", redirectUrl);
 

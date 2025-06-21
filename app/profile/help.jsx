@@ -33,7 +33,7 @@ export default function HelpScreen() {
   // Handle email support
   const handleEmailSupport = () => {
     Linking.openURL(
-      "mailto:support@voicenotion.com?subject=VoiceNotion Support Request"
+      "mailto:support@sayNote.com?subject=sayNote Support Request"
     ).catch((err) => console.error("Error opening email:", err));
   };
 
@@ -50,7 +50,7 @@ export default function HelpScreen() {
         "To use voice commands, tap the microphone button at the bottom of the note screen. Speak clearly and use commands like 'create heading', 'add bullet list', or 'make text bold'. You can also dictate text directly.",
     },
     {
-      question: "Can I use VoiceNotion offline?",
+      question: "Can I use sayNote offline?",
       answer:
         "Yes, you can create and edit notes offline. Voice commands require an internet connection, but the editor works fully offline. Your changes will sync when you're back online.",
     },
@@ -219,7 +219,7 @@ export default function HelpScreen() {
             onPress={() => router.push("/profile/about")}
           >
             <Text style={[styles.linkText, { color: theme.primary }]}>
-              About VoiceNotion
+              About sayNote
             </Text>
             <Ionicons name="chevron-forward" size={16} color={theme.primary} />
           </TouchableOpacity>

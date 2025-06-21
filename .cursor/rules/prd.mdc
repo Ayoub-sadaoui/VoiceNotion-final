@@ -3,15 +3,15 @@ description:
 globs: 
 alwaysApply: true
 ---
-# Project Overview & Product Requirements Document (PRD): VoiceNotion
+# Project Overview & Product Requirements Document (PRD): sayNote
 
 ## 1. Introduction & Vision
 
-**Product Name:** VoiceNotion
+**Product Name:** sayNote
 
 **Vision:** To create a seamless, mobile-first note-taking and document creation experience where users can effortlessly capture, structure, and refine their thoughts primarily through voice commands, complemented by a powerful and intuitive block-based editor.
 
-VoiceNotion aims to be the go-to application for users who value speed, efficiency, and the flexibility of voice input, without sacrificing the rich editing capabilities of modern block editors. It is designed for students, professionals, writers, and anyone who needs to quickly jot down ideas, organize notes, or draft documents on the go.
+sayNote aims to be the go-to application for users who value speed, efficiency, and the flexibility of voice input, without sacrificing the rich editing capabilities of modern block editors. It is designed for students, professionals, writers, and anyone who needs to quickly jot down ideas, organize notes, or draft documents on the go.
 
 ## 2. Goals & Objectives
 
@@ -91,7 +91,7 @@ The application follows a structured navigation scheme as outlined below, design
 
 ## 5. Technology Stack
 
-The development of VoiceNotion will utilize a modern, cross-platform technology stack chosen for its capabilities in mobile development, AI integration, and rich text editing:
+The development of sayNote will utilize a modern, cross-platform technology stack chosen for its capabilities in mobile development, AI integration, and rich text editing:
 
 - **Mobile Development Framework:**
   - **Expo SDK (Version 52+):** Chosen for its rapid JavaScript development capabilities, extensive library of native modules, and simplified build/deployment process for React Native applications. Expo allows for a managed workflow, OTA updates, and easy access to native device features.
@@ -139,4 +139,4 @@ The development of VoiceNotion will utilize a modern, cross-platform technology 
   - Lazy loading for performance on Home
   - AI-assisted organization and tagging
 
-This PRD will guide the design and development process for VoiceNotion, ensuring all stakeholders have a clear understanding of the project's scope, goals, and requirements.
+This PRD will guide the design and development process for sayNote, ensuring all stakeholders have a clear understanding of the project's scope, goals, and requirements.

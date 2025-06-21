@@ -313,9 +313,9 @@ export default function BackupScreen() {
           ]}
         >
           <Text style={[styles.infoText, { color: theme.secondaryText }]}>
-            VoiceNotion automatically backs up your notes to the cloud when
-            you're signed in. Your notes are encrypted and can only be accessed
-            with your account.
+            sayNote automatically backs up your notes to the cloud when you're
+            signed in. Your notes are encrypted and can only be accessed with
+            your account.
           </Text>
         </View>
       </ScrollView>

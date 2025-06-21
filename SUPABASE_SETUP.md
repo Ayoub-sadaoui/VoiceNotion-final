@@ -1,12 +1,12 @@
-# Supabase Setup Guide for VoiceNotion
+# Supabase Setup Guide for sayNote
 
-This guide will help you set up Supabase for your VoiceNotion app, including authentication and database tables for notes.
+This guide will help you set up Supabase for your sayNote app, including authentication and database tables for notes.
 
 ## 1. Create a Supabase Account and Project
 
 1. Go to [https://supabase.com/](https://supabase.com/) and sign up for an account or log in.
 2. Create a new project by clicking "New Project".
-3. Enter a name for your project (e.g., "VoiceNotion").
+3. Enter a name for your project (e.g., "sayNote").
 4. Set a secure database password (keep this safe, you'll need it for database access).
 5. Choose the region closest to your users.
 6. Click "Create new project" and wait for it to be provisioned.
@@ -117,7 +117,7 @@ You'll need the Supabase URL and anon key for your app:
 
 ## 5. Configure Environment Variables
 
-In your VoiceNotion app:
+In your sayNote app:
 
 1. Create a `.env` file in the root of your project.
 2. Add the following variables:
@@ -164,3 +164,26 @@ For production deployment:
 - [React Native AsyncStorage Documentation](https://reactnative.dev/docs/asyncstorage)
 
 databse password = oDVpKVlHn1i2PUQa
+
+
+
+
+
+
+🎙️ Advanced Voice Control:
+Dictate & Create: Simply speak to create structured notes with headings, lists, and quotes. From meeting minutes to recipes, just say it and see it appear.
+Edit with Voice: Effortlessly format, select, and modify your text. Say things like "Make the last paragraph bold," or "Turn this block into a to-do list."
+🤖 Your Personal AI Assistant:
+Ask Anything: Stuck on an idea? Need a quick fact-check? Ask the built-in AI assistant any question and get instant answers directly in your notes.
+AI-Powered Actions: Let the AI do the heavy lifting. Ask it to brainstorm ideas, summarize long passages, or even draft content for you.
+✍️ Powerful Block-Based Editor:
+Notion-Style Editing: Enjoy a flexible and intuitive editor where every piece of content is a movable, modifiable block.
+Hierarchical Organization: Structure your ideas with infinite nesting. Create pages within pages for ultimate organization.
+☁️ Seamless & Always-On:
+Real-Time Sync: Your notes stay updated across all your devices, instantly.
+Full Offline Mode: Keep working even without an internet connection. Your notes sync automatically when you're back online.
+✨ Designed for Productivity:
+Share with Ease: Instantly share your notes with anyone via your favorite apps.
+Instant Full-Text Search: Find any note, title, or piece of content in seconds.
+Customizable Look: Personalize your notes with icons and switch between beautiful Light and Dark themes.
+Share with Ease: Instantly share your notes with a single tap, making collaboration and communication seamless.
