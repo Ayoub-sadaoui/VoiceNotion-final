@@ -84,12 +84,29 @@ const ToastManager = () => {
   const insets = useSafeAreaInsets();
   const timeoutRef = useRef(null);
 
+  // Use refs to store the methods to avoid recreation on each render
+  const methodsRef = useRef({
+    show,
+    hide,
+    update,
+  });
+
+  // Update methods in the ref when they change
   useEffect(() => {
-    // Assign the methods to our global reference
+    methodsRef.current = {
+      show,
+      hide,
+      update,
+    };
+  }, [show, hide, update]);
+
+  // Assign the methods to our global reference using another effect
+  useEffect(() => {
+    // Create a stable object that delegates to the current methods
     toastRef = {
-      show: show,
-      hide: hide,
-      update: update,
+      show: (...args) => methodsRef.current.show(...args),
+      hide: (...args) => methodsRef.current.hide(...args),
+      update: (...args) => methodsRef.current.update(...args),
     };
 
     return () => {
@@ -110,21 +127,27 @@ const ToastManager = () => {
       setVisible(false);
 
       // Small delay to allow hide animation to finish
-      setTimeout(() => {
-        setToastProps({
-          ...toastProps,
+      const timer = setTimeout(() => {
+        const newMessage = options.message
+          ? truncateMessage(options.message)
+          : "";
+        setToastProps((prevProps) => ({
+          ...prevProps,
           ...options,
-          message: options.message ? truncateMessage(options.message) : "",
-        });
+          message: newMessage,
+        }));
         setVisible(true);
       }, 300);
     } else {
-      // Set new props and show toast
-      setToastProps({
-        ...toastProps,
+      // Set new props and show toast using functional update to avoid stale state
+      const newMessage = options.message
+        ? truncateMessage(options.message)
+        : "";
+      setToastProps((prevProps) => ({
+        ...prevProps,
         ...options,
-        message: options.message ? truncateMessage(options.message) : "",
-      });
+        message: newMessage,
+      }));
       setVisible(true);
     }
 
@@ -146,13 +169,13 @@ const ToastManager = () => {
   };
 
   const update = (options) => {
-    setToastProps({
-      ...toastProps,
+    setToastProps((prevProps) => ({
+      ...prevProps,
       ...options,
       message: options.message
         ? truncateMessage(options.message)
-        : toastProps.message,
-    });
+        : prevProps.message,
+    }));
 
     // Reset timeout if duration is provided
     if (options.duration !== undefined && options.duration > 0) {

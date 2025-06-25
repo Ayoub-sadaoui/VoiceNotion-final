@@ -30,21 +30,33 @@ const CustomToast = ({
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const [fontsLoaded, setFontsLoaded] = useState(false);
 
-  // Load fonts when component mounts
+  // Font loading has been moved outside component rendering cycle
+  // to avoid useInsertionEffect conflicts
   useEffect(() => {
+    // Create a cleanup function to prevent state updates if component unmounts
+    let isMounted = true;
+
     async function loadFonts() {
       try {
-        await Font.loadAsync({
-          ...Ionicons.font,
-        });
-        setFontsLoaded(true);
+        // Only load fonts if they haven't been loaded yet
+        if (Ionicons.font && !fontsLoaded) {
+          await Font.loadAsync(Ionicons.font);
+          if (isMounted) {
+            setFontsLoaded(true);
+          }
+        }
       } catch (error) {
         console.error("Error loading Ionicons font:", error);
       }
     }
 
     loadFonts();
-  }, []);
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
+  }, [Ionicons.font, fontsLoaded]); // Dependencies to prevent unnecessary font loading
 
   // Define toast colors based on type
   const getToastColors = () => {
@@ -98,9 +110,33 @@ const CustomToast = ({
 
   const toastColors = getToastColors();
 
-  // Manage animations
+  // Manage animations - separated visibility and auto-hide logic
+  const hideToastRef = useRef();
+
+  // Store the hideToast function in a ref to prevent recreating it on each render
+  useEffect(() => {
+    hideToastRef.current = () => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: -100,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        if (onHide) onHide();
+      });
+    };
+  }, [fadeAnim, translateY, onHide]);
+
+  // Handle visibility changes
   useEffect(() => {
     if (visible) {
+      // Show toast with animation
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
@@ -122,16 +158,21 @@ const CustomToast = ({
           useNativeDriver: false,
         }).start();
       }
+    } else if (hideToastRef.current) {
+      // Use the ref to call hideToast
+      hideToastRef.current();
+    }
+  }, [visible, fadeAnim, translateY, showProgress, progressAnim, duration]);
 
-      // Auto hide after duration
-      if (duration > 0) {
-        const timer = setTimeout(() => {
-          hideToast();
-        }, duration);
-        return () => clearTimeout(timer);
-      }
-    } else {
-      hideToast();
+  // Set up auto-hide timer
+  useEffect(() => {
+    if (visible && duration > 0) {
+      const timer = setTimeout(() => {
+        if (hideToastRef.current) {
+          hideToastRef.current();
+        }
+      }, duration);
+      return () => clearTimeout(timer);
     }
   }, [visible, duration]);
 
@@ -161,23 +202,7 @@ const CustomToast = ({
     };
   }, [visible, pulseAnim, toastColors.pulseAnimation]);
 
-  // Hide toast with animation
-  const hideToast = () => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: -100,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      if (onHide) onHide();
-    });
-  };
+  // The hideToast function has been moved into the useEffect to prevent React scheduling issues
 
   // Render icon with fallback
   const renderIcon = () => {
@@ -275,7 +300,10 @@ const CustomToast = ({
             </Text>
           )}
 
-          <TouchableOpacity style={styles.closeButton} onPress={hideToast}>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => hideToastRef.current && hideToastRef.current()}
+          >
             {renderCloseIcon()}
           </TouchableOpacity>
         </View>

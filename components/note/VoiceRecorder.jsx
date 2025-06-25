@@ -88,6 +88,18 @@ const VoiceRecorder = ({
     };
   }, []);
 
+  // Stop and unload recording on component unmount
+  useEffect(() => {
+    return () => {
+      if (recording) {
+        recording.stopAndUnloadAsync();
+        if (recordingInterval.current) {
+          clearInterval(recordingInterval.current);
+        }
+      }
+    };
+  }, [recording]);
+
   // Request permissions for audio recording
   const requestPermissions = async () => {
     try {
@@ -322,7 +334,7 @@ const VoiceRecorder = ({
           console.log("Got AI answer with blocks:", aiResponse.blocks.length);
           commandResult = {
             success: true,
-            action: "INSERT_AI_ANSWER",
+            action: aiResponse.action || "INSERT_AI_ANSWER", // Use the action from AI service
             blocks: aiResponse.blocks,
             rawCommand: result.transcription,
             rawTranscription: result.transcription,
@@ -410,6 +422,8 @@ const VoiceRecorder = ({
         return "Text added";
       case "INSERT_AI_ANSWER":
         return "AI answer added";
+      case "INSERT_AI_IMAGE":
+        return "AI image generated";
       case "DELETE_BLOCK":
         return "Content deleted";
       case "CREATE_PAGE":

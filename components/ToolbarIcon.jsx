@@ -81,20 +81,61 @@ const ICON_PATHS = {
  * @param {Object} props.style - Additional style for the SVG
  * @returns {JSX.Element} - Rendered icon
  */
-const ToolbarIcon = ({
-  type,
-  size = 20,
-  fill = "currentColor",
-  style = {},
-  ...props
-}) => {
+const ToolbarIcon = ({ type, size = 20, fill, style = {}, ...props }) => {
+  // Handle the 'image' icon as a special case because it's not in ICON_PATHS.
+  if (type === "image") {
+    return (
+      <Svg
+        xmlns="http://www.w3.org/2000/svg"
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={fill}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+        <polyline points="21 15 16 10 5 21"></polyline>
+      </Svg>
+    );
+  }
+
+  // Handle the 'magic' icon for AI Image Generator
+  if (type === "magic") {
+    return (
+      <Svg
+        xmlns="http://www.w3.org/2000/svg"
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={fill}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+        <path d="M5 3v4" />
+        <path d="M19 17v4" />
+        <path d="M3 5h4" />
+        <path d="M17 19h4" />
+      </Svg>
+    );
+  }
+
+  // For all other icons, look them up in the ICON_PATHS object.
   const iconData = ICON_PATHS[type];
 
+  // If the icon isn't found, log a warning and return null.
   if (!iconData) {
     console.warn(`Icon type '${type}' not found`);
     return null;
   }
 
+  // Render the icon using the path data from ICON_PATHS.
   return (
     <Svg
       width={size}

@@ -8,20 +8,17 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from "react-native";
 import { signIn, signInWithGoogle } from "../../services/supabaseService";
 import { Link, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { FontAwesome } from "@expo/vector-icons";
-import {
-  testSupabaseConfig,
-  testGoogleOAuthConfig,
-} from "../../utils/testSupabaseConfig";
+import { FontAwesome, Ionicons } from "@expo/vector-icons";
+import { testGoogleOAuthConfig } from "../../utils/testSupabaseConfig";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -103,24 +100,7 @@ export default function LoginScreen() {
     }
   };
 
-  const handleTestConfig = async () => {
-    try {
-      const result = await testSupabaseConfig();
-      if (result) {
-        Alert.alert(
-          "Configuration Test",
-          "Supabase configuration appears to be working correctly. Check console for details."
-        );
-      } else {
-        Alert.alert(
-          "Configuration Test",
-          "Supabase configuration has issues. Check console for details."
-        );
-      }
-    } catch (err) {
-      Alert.alert("Test Error", "Error testing configuration: " + err.message);
-    }
-  };
+
 
   return (
     <KeyboardAvoidingView
@@ -170,8 +150,15 @@ export default function LoginScreen() {
             placeholder="Password"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
+            secureTextEntry={!showPassword}
           />
+          <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+            <Ionicons
+              name={showPassword ? "eye-off" : "eye"}
+              size={24}
+              color="#666"
+            />
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
@@ -219,14 +206,7 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
-        {__DEV__ && (
-          <TouchableOpacity
-            style={styles.testButton}
-            onPress={handleTestConfig}
-          >
-            <Text style={styles.testButtonText}>Test Configuration</Text>
-          </TouchableOpacity>
-        )}
+
       </View>
 
       <View style={styles.footer}>
@@ -362,17 +342,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
   },
-  testButton: {
-    marginTop: 20,
-    padding: 10,
-    alignItems: "center",
-    backgroundColor: "#f5f5f5",
-    borderRadius: 10,
-  },
-  testButtonText: {
-    color: "#666",
-    fontSize: 14,
-  },
+
   footer: {
     flexDirection: "row",
     justifyContent: "center",

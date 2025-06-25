@@ -109,6 +109,95 @@ export const handleAIContentCommand = async (
 };
 
 /**
+ * Handle delete all blocks command
+ */
+export const handleDeleteAllCommand = async (
+  commandResult,
+  editorContent,
+  initialContent,
+  editorRef,
+  setEditorContent,
+  setInitialContent,
+  currentPage,
+  storageSavePage,
+  setCurrentPage,
+  setForceRefresh,
+  setIsSaving
+) => {
+  try {
+    setIsSaving(true);
+    console.log("Executing delete all blocks command");
+
+    const currentContent = editorContent || initialContent || [];
+    if (!currentContent || currentContent.length === 0) {
+      console.warn("No content to delete");
+      Toast.show({
+        type: "info",
+        text1: "No Content",
+        text2: "The note is already empty.",
+        visibilityTime: 2000,
+      });
+      setIsSaving(false);
+      return;
+    }
+
+    // Clear the content
+    const updatedContent = [];
+
+    // Update state with the new content
+    setEditorContent(updatedContent);
+    setInitialContent(updatedContent);
+
+    // Save to storage
+    if (currentPage) {
+      const contentJsonString = JSON.stringify(updatedContent);
+      const updatedPage = {
+        ...currentPage,
+        contentJson: contentJsonString,
+        updatedAt: Date.now(),
+      };
+
+      const savedPage = await storageSavePage(updatedPage);
+      setCurrentPage(savedPage);
+
+      // Force refresh the editor
+      setForceRefresh((prev) => prev + 10);
+
+      // Try to update the editor content directly if possible
+      if (
+        editorRef.current &&
+        typeof editorRef.current.setContent === "function"
+      ) {
+        try {
+          console.log("Clearing editor content directly");
+          editorRef.current.setContent(updatedContent);
+        } catch (editorError) {
+          console.error("Error clearing editor content:", editorError);
+        }
+      }
+
+      // Show success message
+      Toast.show({
+        type: "success",
+        text1: "Success",
+        text2: "All blocks have been deleted.",
+        visibilityTime: 2000,
+      });
+    }
+  } catch (error) {
+    console.error("Error executing delete all command:", error);
+    Toast.show({
+      type: "error",
+      text1: "Error",
+      text2: "Failed to delete all blocks.",
+      visibilityTime: 2000,
+    });
+  } finally {
+    setIsSaving(false);
+  }
+};
+
+/**
  * Handle delete block command
  */
 export const handleDeleteBlockCommand = async (
@@ -160,25 +249,21 @@ export const handleDeleteBlockCommand = async (
     }
 
     // Simple approach: Create a new array without the blocks to delete
-    const blocksToDelete = new Set(commandResult.targetBlockIds);
-    console.log("Creating Set of blocks to delete:", blocksToDelete);
+    const blockIdsToDelete = new Set(commandResult.targetBlockIds);
+    console.log("Creating Set of blocks to delete:", blockIdsToDelete);
 
     // Create a simple copy of the content without the blocks to delete
-    const filteredContent = currentContent.filter((block) => {
-      const shouldKeep = !blocksToDelete.has(block.id);
-      if (!shouldKeep) {
-        console.log(`Removing block with ID ${block.id} of type ${block.type}`);
-      }
-      return shouldKeep;
-    });
+    const updatedContent = currentContent.filter(
+      (block) => !blockIdsToDelete.has(String(block.id))
+    );
 
     // Update state with the new content
-    setEditorContent(filteredContent);
-    setInitialContent(filteredContent);
+    setEditorContent(updatedContent);
+    setInitialContent(updatedContent);
 
     // Save to storage
     if (currentPage) {
-      const contentJsonString = JSON.stringify(filteredContent);
+      const contentJsonString = JSON.stringify(updatedContent);
       const updatedPage = {
         ...currentPage,
         contentJson: contentJsonString,
@@ -198,7 +283,7 @@ export const handleDeleteBlockCommand = async (
       ) {
         try {
           console.log("Updating editor content directly");
-          editorRef.current.setContent(filteredContent);
+          editorRef.current.setContent(updatedContent);
 
           // Try focusing the editor to ensure refresh
           setTimeout(() => {
@@ -824,6 +909,22 @@ export const handleModifyBlockCommand = async (
           }
         }
       }
+    } else if (modificationType === "DELETE_ALL") {
+      try {
+        // If there are no blocks, do nothing
+        if (!currentContent || currentContent.length === 0) {
+          return true;
+        }
+
+        // Keep the first block (usually the title)
+        const newContent = [currentContent[0]];
+        setEditorContent(newContent);
+        setInitialContent(newContent);
+        return true;
+      } catch (error) {
+        console.error("Error executing DELETE_ALL command:", error);
+        return false;
+      }
     }
 
     // If successful, update state and save
@@ -898,6 +999,30 @@ export const handleModifyBlockCommand = async (
   }
 };
 
+// Added logic to handle long and complex prompts for image generation
+export const handleImageGenerationCommand = async (prompt) => {
+  try {
+    if (prompt.length > 500) {
+      throw new Error("Prompt is too long. Please shorten it.");
+    }
+
+    const response = await geminiService.generateImage(prompt);
+    if (response.success) {
+      return response.imageUrl;
+    } else {
+      throw new Error("Image generation failed.");
+    }
+  } catch (error) {
+    console.error("Error handling image generation command:", error);
+    Toast.show({
+      type: "error",
+      text1: "Image Generation Error",
+      text2: error.message,
+    });
+  }
+};
+
+
 // Export other voice command handlers as needed
 export const voiceCommandHandlers = {
   handleAIContentCommand,
@@ -906,6 +1031,7 @@ export const voiceCommandHandlers = {
   handleCreatePageCommand,
   handleApplyFormattingCommand,
   handleModifyBlockCommand,
+  handleImageGenerationCommand,
 };
 
 export default voiceCommandHandlers;

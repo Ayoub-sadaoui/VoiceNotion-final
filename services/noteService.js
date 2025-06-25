@@ -58,7 +58,6 @@ export const localToSupabaseNote = (note, userId) => {
     icon: note.icon || "📄", // Add icon field
   };
 
-  console.log("Supabase note format:", JSON.stringify(supabaseNote));
   return supabaseNote;
 };
 

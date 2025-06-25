@@ -214,8 +214,14 @@ export const sanitizeContentBlocks = (content, title = "New note") => {
  * @returns {Array} - Default content blocks
  */
 export const createDefaultContent = (title) => {
+  // Generate unique IDs for the blocks
+  const generateId = () => {
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+  };
+
   return [
     {
+      id: generateId(),
       type: "heading",
       props: {
         textColor: "default",
@@ -227,6 +233,23 @@ export const createDefaultContent = (title) => {
         {
           type: "text",
           text: title || "Untitled Page",
+          styles: {},
+        },
+      ],
+      children: [],
+    },
+    {
+      id: generateId(),
+      type: "paragraph",
+      props: {
+        textColor: "default",
+        backgroundColor: "default",
+        textAlignment: "left",
+      },
+      content: [
+        {
+          type: "text",
+          text: "",
           styles: {},
         },
       ],
@@ -338,7 +361,19 @@ export const insertContentDirectly = (
       return isValid;
     });
 
-    if (validBlocks.length === 0) {
+    // Ensure every block has an ID
+    const blocksWithIds = validBlocks.map((block) => {
+      if (!block.id) {
+        // Generate an ID if missing
+        block.id = Date.now().toString(36) + Math.random().toString(36).substring(2);
+        console.log(`Generated ID ${block.id} for block of type ${block.type}`);
+      } else {
+        console.log(`Block of type ${block.type} already has ID: ${block.id}`);
+      }
+      return block;
+    });
+
+    if (blocksWithIds.length === 0) {
       // Show a user-friendly toast if nothing was spoken or no valid block
       if (typeof window !== "undefined" && window.Toast) {
         window.Toast.show({
@@ -366,7 +401,7 @@ export const insertContentDirectly = (
     }
 
     // Create a copy of current content with new blocks appended
-    const updatedContent = [...currentContent, ...validBlocks];
+    const updatedContent = [...currentContent, ...blocksWithIds];
 
     // Store the recent transcription (for UI feedback)
     if (isRawText && typeof transcriptionData === "string") {

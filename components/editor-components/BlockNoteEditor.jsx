@@ -18,6 +18,8 @@ import "../keyboard-toolbar.css";
 import { selectionDisablerScript } from "../selectionDisabler";
 
 // Import our custom components
+import * as ImagePicker from "expo-image-picker";
+import { uploadImageAsync } from "../../services/supabase/storage";
 import EditorToolbars from "./EditorToolbars";
 import KeyboardToolbarWrapper from "./KeyboardToolbarWrapper";
 import ConfirmDialog from "./ConfirmDialog";
@@ -68,11 +70,82 @@ const BlockNoteEditor = forwardRef((props, ref) => {
   const editorInstance = useRef(null);
   const editorContainerRef = useRef(null);
   const [contentInitialized, setContentInitialized] = useState(false);
+  const [isStabilizing, setIsStabilizing] = useState(true); // New flag to prevent rapid changes
+
+  // Stabilization period - prevent rapid changes for the first few seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsStabilizing(false);
+      console.log("Editor stabilization period ended");
+    }, 3000); // 3 second stabilization period
+
+    return () => clearTimeout(timer);
+  }, [currentPageId]);
 
   // State for dialog to create a new page
   const [showCreatePageDialog, setShowCreatePageDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pageToDelete, setPageToDelete] = useState(null);
+
+  // Reset delete dialog state when component mounts or page changes
+  useEffect(() => {
+    setShowDeleteConfirm(false);
+    setPageToDelete(null);
+    console.log("Reset delete dialog state for page:", currentPageId);
+  }, [currentPageId]);
+
+  // Additional safety check to prevent unwanted delete dialogs
+  useEffect(() => {
+    if (showDeleteConfirm && !pageToDelete) {
+      console.warn("Delete dialog is showing but no page to delete, resetting");
+      setShowDeleteConfirm(false);
+    }
+  }, [showDeleteConfirm, pageToDelete]);
+
+  const handleImageUpload = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      alert("Sorry, we need camera roll permissions to make this work!");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Reverted to formerly deprecated but stable API to fix crash
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+    });
+
+    if (result.canceled || !result.assets || result.assets.length === 0) {
+      return;
+    }
+
+    const image = result.assets[0];
+
+    try {
+      // Pass the entire image asset, not just the URI
+      const publicUrl = await uploadImageAsync(image);
+
+      if (publicUrl && editor) {
+        const currentBlock = editor.getTextCursorPosition().block;
+        editor.insertBlocks(
+          [
+            {
+              type: "image",
+              props: {
+                url: publicUrl,
+              },
+            },
+          ],
+          currentBlock,
+          "after"
+        );
+      }
+    } catch (error) {
+      console.error("Image upload failed:", error);
+      alert("Image upload failed. Please try again.");
+    }
+  };
 
   // Apply theme class to document when theme changes
   useEffect(() => {
@@ -172,7 +245,9 @@ const BlockNoteEditor = forwardRef((props, ref) => {
   // Save the editor instance to ref so we can access it later
   editorInstance.current = editor;
 
-  // Function to check if any page links were deleted and delete the corresponding pages
+  // NOTE: Commented out checkForDeletedPageLinks function as it was causing infinite delete dialogs
+  // This functionality needs to be redesigned to avoid UI thrashing
+  /*
   const checkForDeletedPageLinks = useCallback(() => {
     if (!editor || !nestedPages || nestedPages.length === 0) return;
 
@@ -203,41 +278,83 @@ const BlockNoteEditor = forwardRef((props, ref) => {
       });
     }
   }, [editor, nestedPages, onDeletePage]);
-
-  // Add the change handler to the editor instance
+  */ // Add the change handler to the editor instance
   useEffect(() => {
     if (editor && onChange) {
+      let lastChangeTime = 0;
+      let changeCount = 0;
+      const throttleDelay = 300; // Increased throttle delay to reduce firing frequency
+      let lastContentHash = "";
+
       // Set up the change handler on the editor instance
       const unsubscribe = editor.onChange(() => {
-        // Check if any page link blocks were deleted
-        checkForDeletedPageLinks();
+        // Skip all changes during stabilization period
+        if (isStabilizing) {
+          console.log("Skipping change during stabilization period");
+          return;
+        }
 
-        // Process content before passing to onChange handler
+        const now = Date.now();
+        changeCount++;
+
+        // If too many changes in a short time, skip to prevent infinite loops
+        if (changeCount > 5) {
+          console.warn("Too many rapid changes detected, throttling heavily");
+          setTimeout(() => {
+            changeCount = 0;
+          }, 2000);
+          return;
+        }
+
+        if (now - lastChangeTime < throttleDelay) {
+          return; // Skip this change if it's too soon after the last one
+        }
+        lastChangeTime = now;
+
+        // Get current blocks
         const currentBlocks = editor.topLevelBlocks;
 
-        // Filter out any empty blocks at the end that might be automatically added
+        // Create a simple hash to detect if content actually changed
+        const contentHash = JSON.stringify(
+          currentBlocks.map((block) => ({
+            type: block.type,
+            content: block.content,
+            props: block.props,
+          }))
+        );
+
+        // Only process if content actually changed
+        if (contentHash === lastContentHash) {
+          return;
+        }
+        lastContentHash = contentHash;
+
+        // Only process blocks if there are meaningful changes
         const processedBlocks = [...currentBlocks];
 
-        // If there's more than one block, check if the last one is an empty paragraph
-        if (processedBlocks.length > 1) {
+        // Only remove empty blocks if we have more than 2 blocks and the user isn't actively typing
+        if (processedBlocks.length > 2) {
           const lastBlock = processedBlocks[processedBlocks.length - 1];
 
-          // Check if it's an empty paragraph (no content or empty text)
+          // Check if it's an empty paragraph that's auto-generated
           if (
             lastBlock.type === "paragraph" &&
             (!lastBlock.content ||
               !lastBlock.content.length ||
               (lastBlock.content.length === 1 &&
                 lastBlock.content[0].type === "text" &&
-                !lastBlock.content[0].text))
+                !lastBlock.content[0].text.trim()))
           ) {
-            // If this is an automatically added empty block, remove it
+            // Only remove if it's clearly auto-generated (not user-created)
             if (!lastBlock.id.includes("user-created")) {
               processedBlocks.pop();
               console.log("Removed automatically added empty block at the end");
             }
           }
         }
+
+        // Reset change count after successful processing
+        changeCount = Math.max(0, changeCount - 1);
 
         // Call the onChange handler with the processed content
         onChange(processedBlocks);
@@ -248,7 +365,37 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         unsubscribe();
       };
     }
-  }, [editor, onChange, checkForDeletedPageLinks]);
+  }, [editor, onChange, isStabilizing]);
+
+  // Effect to sync editor with external content changes - DISABLED to prevent infinite loops
+  // This was causing infinite loops with page link insertion and auto-save
+  /*
+  useEffect(() => {
+    // Only run on updates, not on initial mount, by checking contentInitialized
+    // Also prevent syncing if we're currently adding page links
+    if (
+      contentInitialized &&
+      editor &&
+      initialContent &&
+      Array.isArray(initialContent)
+    ) {
+      const currentBlocks = editor.topLevelBlocks;
+
+      // Don't sync if the content is essentially the same (ignoring minor changes)
+      const currentContentStr = JSON.stringify(currentBlocks);
+      const initialContentStr = JSON.stringify(initialContent);
+
+      if (currentContentStr !== initialContentStr) {
+        console.log("Syncing editor content with external changes");
+        try {
+          editor.replaceBlocks(currentBlocks, initialContent);
+        } catch (error) {
+          console.error("Error syncing editor content:", error);
+        }
+      }
+    }
+  }, [initialContent, editor, contentInitialized]);
+  */
 
   // Store the navigation callback in the editor's storage
   useEffect(() => {
@@ -260,54 +407,41 @@ const BlockNoteEditor = forwardRef((props, ref) => {
     }
   }, [editor, onNavigateToPage]);
 
-  // Effect to add page link blocks for nested pages when the editor is initialized
+  // Effect to add page link blocks for nested pages (only when truly necessary)
   useEffect(() => {
-    if (!editor || !nestedPages) return;
+    if (!editor || !nestedPages || isStabilizing) return;
 
-    console.log(
-      `Validating page links - ${nestedPages.length} nested pages available`
-    );
+    // Only run this effect when:
+    // 1. It's the initial load (contentInitialized is false)
+    // 2. The number of nested pages has actually changed
+    const currentPageLinkCount = editor.topLevelBlocks.filter(
+      (block) => block.type === "pageLink"
+    ).length;
 
-    // If we have nested pages and initialContent, let's check if we need to add page links
-    if (nestedPages.length > 0 && editor.topLevelBlocks) {
-      console.log("Checking for missing page links...");
+    // Skip if we already have the right number of page links
+    if (contentInitialized && currentPageLinkCount === nestedPages.length) {
+      return;
+    }
 
-      // Get existing page link blocks
-      const existingPageLinkIds = [];
-      const existingPageLinkBlocks = [];
-      const invalidPageLinkBlocks = [];
+    // Add a larger delay to prevent rapid synchronization
+    const timeoutId = setTimeout(() => {
+      console.log(
+        `Page links sync - ${nestedPages.length} nested pages available, contentInitialized: ${contentInitialized}`
+      );
 
-      editor.topLevelBlocks.forEach((block) => {
-        if (block.type === "pageLink") {
-          // Check if this is a valid link (matches a nested page)
-          const matchingPage = nestedPages.find(
-            (page) => page.id === block.props.pageId
-          );
+      // Only add page links if we have nested pages and they're missing
+      if (nestedPages.length > 0 && editor.topLevelBlocks) {
+        console.log("Syncing page links with nested pages...");
 
-          if (matchingPage) {
-            // This is a valid page link
+        // Get existing page link blocks (just get the IDs, don't remove any blocks)
+        const existingPageLinkIds = [];
+
+        editor.topLevelBlocks.forEach((block) => {
+          if (block.type === "pageLink" && block.props?.pageId) {
             existingPageLinkIds.push(block.props.pageId);
-            existingPageLinkBlocks.push(block);
-          } else {
-            // This is an invalid page link that doesn't match any nested page
-            console.log(
-              `Found invalid page link to ${block.props.pageId} (${block.props.pageTitle})`
-            );
-            invalidPageLinkBlocks.push(block);
           }
-        }
-      });
+        });
 
-      // Remove invalid page link blocks
-      if (invalidPageLinkBlocks.length > 0) {
-        console.log(
-          `Removing ${invalidPageLinkBlocks.length} invalid page link blocks`
-        );
-        editor.removeBlocks(invalidPageLinkBlocks);
-      }
-
-      // Only add missing page links if we haven't initialized content yet
-      if (!contentInitialized) {
         // Find pages that don't have corresponding page link blocks
         const missingPageLinks = nestedPages.filter(
           (page) => !existingPageLinkIds.includes(page.id)
@@ -332,45 +466,63 @@ const BlockNoteEditor = forwardRef((props, ref) => {
           }));
 
           if (newBlocks.length > 0) {
-            if (lastBlock) {
-              // Insert after the last block
-              editor.insertBlocks(newBlocks, lastBlock, "after");
-            } else {
-              // If there are no blocks, insert at the beginning
-              editor.insertBlocks(newBlocks, null, "firstChild");
+            try {
+              if (lastBlock) {
+                // Insert after the last block
+                editor.insertBlocks(newBlocks, lastBlock, "after");
+              } else {
+                // If there are no blocks, insert at the beginning
+                editor.insertBlocks(newBlocks, null, "firstChild");
+              }
+              console.log("Added missing page links:", newBlocks.length);
+            } catch (error) {
+              console.error("Error inserting page link blocks:", error);
             }
-            console.log("Added missing page links:", newBlocks.length);
           }
         }
 
+        // Only set content initialized on the first run to track initial load
+        if (!contentInitialized) {
+          setContentInitialized(true);
+          console.log("Content initialization completed");
+        }
+      } else if (!contentInitialized && nestedPages.length === 0) {
+        // If there are no nested pages, still mark as initialized
         setContentInitialized(true);
+        console.log("Content initialization completed (no nested pages)");
       }
-    }
-  }, [editor, nestedPages, contentInitialized]);
+    }, 1000); // Even larger delay to prevent rapid firing
+
+    return () => clearTimeout(timeoutId);
+  }, [editor, nestedPages.length, contentInitialized, isStabilizing]); // Only depend on length, not the full array
 
   // Handle creating a new page link from toolbar button
   const handleCreatePageLink = () => {
+    console.log("=== Add page button clicked ===");
+
     // First check if we have the callback to create pages
     if (onCreateNestedPage) {
+      console.log("onCreateNestedPage callback available, proceeding...");
+
       // Create a temporary title for the new page
       const mockPageTitle = "New Linked Page";
       const mockPageIcon = "📄";
 
-      console.log("Creating new nested page...");
+      console.log("Creating new nested page with title:", mockPageTitle);
 
       // Call the parent component's function to create the actual page
       onCreateNestedPage(mockPageTitle, mockPageIcon)
         .then((newPage) => {
+          console.log("Page creation result:", newPage);
+
           if (newPage && newPage.id) {
-            console.log("Inserting page link for:", newPage.title);
-            TranscriptionHandler.insertPageLinkBlock(
-              editor,
-              newPage.id,
-              newPage.title,
-              newPage.icon
+            console.log("Successfully created page:", newPage.title);
+            // The page link block will be automatically added by the useEffect that watches nestedPages
+            console.log(
+              "Page link block will be added automatically by nestedPages effect"
             );
           } else {
-            console.warn("Created page is invalid or missing ID");
+            console.warn("Created page is invalid or missing ID:", newPage);
           }
         })
         .catch((error) => {
@@ -411,11 +563,24 @@ const BlockNoteEditor = forwardRef((props, ref) => {
 
   // Handle deleting the current page
   const handleDeleteCurrentPage = () => {
+    console.log("=== handleDeleteCurrentPage called ===");
+    console.log("pageToDelete:", pageToDelete);
+    console.log("onDeletePage callback:", !!onDeletePage);
+
     if (onDeletePage && pageToDelete) {
+      console.log("Executing delete for page:", pageToDelete);
       onDeletePage(pageToDelete, true); // The 'true' flag indicates this is a user-initiated deletion
+    } else {
+      console.warn("Cannot execute delete - missing callback or pageToDelete", {
+        hasCallback: !!onDeletePage,
+        pageToDelete: pageToDelete,
+      });
     }
+
+    // Always reset the dialog state
     setShowDeleteConfirm(false);
     setPageToDelete(null);
+    console.log("Delete dialog state reset");
   };
 
   // Effect to disable text selection handling on iOS
@@ -699,9 +864,22 @@ const BlockNoteEditor = forwardRef((props, ref) => {
 
         // Function to delete the current page
         deleteCurrentPage: () => {
+          console.log("=== deleteCurrentPage called ===");
+          console.log("onDeletePage callback:", !!onDeletePage);
+          console.log("currentPageId:", currentPageId);
+
           if (onDeletePage && currentPageId) {
+            console.log(
+              "Setting up delete confirmation for page:",
+              currentPageId
+            );
             setPageToDelete(currentPageId);
             setShowDeleteConfirm(true);
+          } else {
+            console.warn("Cannot delete page - missing callback or pageId", {
+              hasCallback: !!onDeletePage,
+              pageId: currentPageId,
+            });
           }
         },
 
@@ -875,7 +1053,7 @@ const BlockNoteEditor = forwardRef((props, ref) => {
             }
           }}
           formattingToolbar={false}
-          htmlAttributes={{
+          domAttributes={{
             editor: {
               class: `blocknote-editor custom-editor theme-${
                 typeof theme === "string" ? theme : "light"
@@ -894,6 +1072,7 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         <KeyboardToolbarWrapper
           editor={editor}
           onCreatePageLink={handleCreatePageLink}
+          onUploadImage={handleImageUpload}
           keyboardHeight={keyboardHeight}
           isKeyboardVisible={isKeyboardVisible}
           theme={typeof theme === "string" ? theme : "light"}

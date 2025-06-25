@@ -9,6 +9,7 @@ import KeyboardToolbar from "../KeyboardToolbar";
 const KeyboardToolbarWrapper = ({
   editor,
   onCreatePageLink,
+  onUploadImage,
   keyboardHeight,
   isKeyboardVisible,
   theme = "light",
@@ -51,6 +52,7 @@ const KeyboardToolbarWrapper = ({
       <KeyboardToolbar
         editor={editor}
         onCreatePageLink={onCreatePageLink}
+        onUploadImage={onUploadImage}
         keyboardHeight={keyboardHeight}
         isKeyboardVisible={isKeyboardVisible}
         themeColors={themeColors}

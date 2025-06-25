@@ -99,3 +99,8 @@ Try saying:
 "Convert all paragraphs to bullet lists"
 "Change the color of all blocks to green"
 "Make all headings level 2"
+
+the delete all voice command is still not fucking working , the delete the last block command is working
+why the fuck it is not working !!!!! what is the fucking problem !!!!! where the issue happening
+also when I say delete the block with this contnetn the heading of ...., it is also not working
+plese can you fix the fucking delete command and make sure it works with diffrent command and make sure that the gemini api is recognizing the wich blok or block delete form the user input and also make sure that we succefully apply the gemini response

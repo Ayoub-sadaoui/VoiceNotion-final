@@ -48,11 +48,8 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
         style={[
           styles.tabBar,
           {
-            backgroundColor: theme.mode === "dark" ? "#1A1B1E" : "#1A1B1E",
-            shadowColor:
-              theme.mode === "dark"
-                ? "rgba(0, 0, 0, 0.5)"
-                : "rgba(0, 0, 0, 0.3)",
+            backgroundColor: theme.surface,
+            shadowColor: theme.shadow,
           },
         ]}
       >
@@ -90,15 +87,22 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
               accessibilityState={isFocused ? { selected: true } : {}}
               accessibilityLabel={options.tabBarAccessibilityLabel}
               onPress={onPress}
-              style={[styles.tab, isFocused && styles.activeTab]}
+              style={[
+                styles.tab,
+                isFocused && { backgroundColor: theme.background },
+              ]}
             >
               <View style={styles.tabContent}>
                 <Ionicons
                   name={isFocused ? iconName : `${iconName}-outline`}
                   size={22}
-                  color={isFocused ? "#000000" : "#FFFFFF"}
+                  color={isFocused ? theme.primary : theme.secondaryText}
                 />
-                {isFocused && <Text style={styles.tabText}>{label}</Text>}
+                {isFocused && (
+                  <Text style={[styles.tabText, { color: theme.primary }]}>
+                    {label}
+                  </Text>
+                )}
               </View>
             </TouchableOpacity>
           );
@@ -141,9 +145,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 48,
   },
-  activeTab: {
-    backgroundColor: "#FFFFFF",
-  },
   tabContent: {
     flexDirection: "row",
     alignItems: "center",
@@ -154,7 +155,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     marginLeft: 6,
-    color: "#000000",
   },
 });
 

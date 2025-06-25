@@ -36,6 +36,8 @@ import {
   handleCreatePageCommand,
   handleApplyFormattingCommand,
   handleModifyBlockCommand,
+  handleDeleteAllCommand,
+  handleGenerateImageCommand,
 } from "../../utils/voiceCommandHandlers";
 
 // Import components
@@ -155,15 +157,25 @@ const NoteScreen = () => {
     loadPage();
   }, [pageId, getPageById]);
 
-  // Update title and icon when page changes
+  // Load nested pages when page changes (no dependency on loadNestedPages to avoid infinite loop)
   useEffect(() => {
-    if (currentPage) {
-      // Load nested pages only if we have a valid page
-      if (currentPage.id) {
-        loadNestedPages();
-      }
+    if (pageId) {
+      console.log("Loading nested pages for page:", pageId);
+
+      // Add a small delay to prevent rapid loading during navigation
+      const timeoutId = setTimeout(async () => {
+        try {
+          const pages = await getChildrenOfPage(pageId);
+          console.log("Found nested pages:", pages.length);
+          setNestedPages(pages);
+        } catch (error) {
+          console.error("Error loading nested pages:", error);
+        }
+      }, 100);
+
+      return () => clearTimeout(timeoutId);
     }
-  }, [currentPage, loadNestedPages]);
+  }, [pageId, getChildrenOfPage]);
 
   // Keyboard listeners
   useEffect(() => {
@@ -293,25 +305,19 @@ const NoteScreen = () => {
     });
   }, [handleSave, currentPage, router]);
 
-  // Load nested pages
+  // Load nested pages (simplified to avoid circular dependencies)
   const loadNestedPages = useCallback(async () => {
-    if (!currentPage || !currentPage.id) return;
+    if (!pageId) return;
 
     try {
-      // Prevent excessive calls by checking if we already have nested pages
-      if (
-        nestedPages.length > 0 &&
-        nestedPages[0]?.parentId === currentPage.id
-      ) {
-        return;
-      }
-
-      const pages = await getChildrenOfPage(currentPage.id);
+      console.log("Manual loadNestedPages call for:", pageId);
+      const pages = await getChildrenOfPage(pageId);
+      console.log("Manual load found nested pages:", pages.length);
       setNestedPages(pages);
     } catch (error) {
-      console.error("Error loading nested pages:", error);
+      console.error("Error in manual loadNestedPages:", error);
     }
-  }, [currentPage, getChildrenOfPage, nestedPages]);
+  }, [pageId, getChildrenOfPage]);
 
   // Handle navigation to a nested page
   const handleNavigateToPage = useCallback(
@@ -332,32 +338,86 @@ const NoteScreen = () => {
       if (!currentPage) return null;
 
       try {
+        console.log(
+          "Creating nested page:",
+          title,
+          "for parent:",
+          currentPage.id
+        );
+
         // Save current page first
         await handleSave();
 
         // Create new page
-        return await PageManager.createNestedPage(
+        const newPage = await PageManager.createNestedPage(
           currentPage,
           createNewPage,
           title,
           icon
         );
+
+        if (newPage) {
+          console.log("Created new page successfully:", newPage.id);
+
+          // Refresh nested pages list to include the new page
+          // Add a small delay to ensure the page is properly saved before refreshing
+          setTimeout(async () => {
+            try {
+              const pages = await getChildrenOfPage(pageId);
+              console.log(
+                "Refreshed nested pages after creation:",
+                pages.length
+              );
+              setNestedPages(pages);
+            } catch (error) {
+              console.error("Error refreshing nested pages:", error);
+            }
+          }, 200);
+        }
+
+        return newPage;
       } catch (error) {
         console.error("Error creating nested page:", error);
         return null;
       }
     },
-    [currentPage, handleSave, createNewPage]
+    [currentPage, handleSave, createNewPage, pageId, getChildrenOfPage]
   );
 
   // Delete a page
   const handleDeletePage = useCallback(
-    async (page) => {
-      if (!page) return false;
+    async (pageIdOrPage, isUserInitiated = true) => {
+      try {
+        let pageToDelete;
 
-      return await PageManager.deletePage(page, storageDeletePage, router);
+        // Handle different input types
+        if (typeof pageIdOrPage === "string") {
+          // If it's a string, it's a page ID, so fetch the page object
+          pageToDelete = await getPageById(pageIdOrPage);
+          if (!pageToDelete) {
+            console.error("Page not found:", pageIdOrPage);
+            return false;
+          }
+        } else if (typeof pageIdOrPage === "object" && pageIdOrPage?.id) {
+          // If it's an object with an ID, it's a page object
+          pageToDelete = pageIdOrPage;
+        } else {
+          console.error("Invalid page parameter:", pageIdOrPage);
+          return false;
+        }
+
+        // Use the newer PageManager.deletePage function
+        return await PageManager.deletePage(
+          pageToDelete,
+          storageDeletePage,
+          router
+        );
+      } catch (error) {
+        console.error("Error deleting page:", error);
+        return false;
+      }
     },
-    [storageDeletePage, router]
+    [storageDeletePage, router, getPageById]
   );
 
   // Handle undo
@@ -464,134 +524,178 @@ const NoteScreen = () => {
   // Handle voice command processing
   const handleCommandProcessed = useCallback(
     async (commandResult) => {
-      if (!commandResult || !commandResult.success) {
-        console.error("Invalid command result:", commandResult);
+      console.log("Processing command result:", commandResult);
+      if (commandResult.success === false) {
+        console.error(
+          "Command processing failed:",
+          commandResult.message || "Unknown error"
+        );
         Toast.show({
           type: "error",
-          text1: "Command Error",
-          text2: "Failed to process voice command",
-          visibilityTime: 2000,
+          text1: "Command Failed",
+          text2: commandResult.message || "Please try again.",
+          visibilityTime: 3000,
         });
-        return;
-      }
+      } else {
+        // Handle the command
+        console.log(`Handling command: ${commandResult.action}`);
+        try {
+          switch (commandResult.action) {
+            case "INSERT_CONTENT":
+              await handleInsertContentCommand(
+                commandResult,
+                insertTranscriptionDirectly,
+                setIsSaving
+              );
+              break;
 
-      console.log("Processing command:", commandResult.action);
+            case "DELETE_ALL":
+              await handleDeleteAllCommand(
+                commandResult,
+                editorContent,
+                initialContent,
+                editorRef,
+                setEditorContent,
+                setInitialContent,
+                currentPage,
+                storageSavePage,
+                setCurrentPage,
+                setForceRefresh,
+                setIsSaving
+              );
+              break;
 
-      try {
-        switch (commandResult.action) {
-          case "INSERT_CONTENT":
-            await handleInsertContentCommand(
-              commandResult,
-              insertTranscriptionDirectly,
-              setIsSaving
-            );
-            break;
+            case "DELETE_BLOCK":
+              await handleDeleteBlockCommand(
+                commandResult,
+                editorContent,
+                initialContent,
+                editorRef,
+                setEditorContent,
+                setInitialContent,
+                currentPage,
+                storageSavePage,
+                setCurrentPage,
+                setForceRefresh,
+                setIsSaving
+              );
+              break;
 
-          case "DELETE_BLOCK":
-            await handleDeleteBlockCommand(
-              commandResult,
-              editorContent,
-              initialContent,
-              editorRef,
-              setEditorContent,
-              setInitialContent,
-              currentPage,
-              storageSavePage,
-              setCurrentPage,
-              setForceRefresh,
-              setIsSaving
-            );
-            break;
+            case "CREATE_PAGE":
+              await handleCreatePageCommand(
+                commandResult,
+                currentPage,
+                createNewPage,
+                handleSave,
+                storageSavePage,
+                insertTranscriptionDirectly,
+                loadNestedPages,
+                router,
+                setIsSaving
+              );
+              break;
 
-          case "CREATE_PAGE":
-            await handleCreatePageCommand(
-              commandResult,
-              currentPage,
-              createNewPage,
-              handleSave,
-              storageSavePage,
-              insertTranscriptionDirectly,
-              loadNestedPages,
-              router,
-              setIsSaving
-            );
-            break;
+            case "GENERATE_IMAGE":
+              await handleGenerateImageCommand(
+                commandResult,
+                insertTranscriptionDirectly,
+                setIsSaving
+              );
+              break;
 
-          case "INSERT_AI_ANSWER":
-          case "INSERT_AI_SUMMARY":
-          case "INSERT_AI_COMPLETION":
-          case "INSERT_AI_REWRITE":
-            await handleAIContentCommand(
-              commandResult,
-              insertTranscriptionDirectly
-            );
-            break;
+            case "INSERT_AI_ANSWER":
+            case "INSERT_AI_SUMMARY":
+            case "INSERT_AI_COMPLETION":
+            case "INSERT_AI_REWRITE":
+            case "INSERT_AI_IMAGE":
+              await handleAIContentCommand(
+                commandResult,
+                insertTranscriptionDirectly
+              );
+              break;
 
-          case "APPLY_FORMATTING":
-            await handleApplyFormattingCommand(
-              commandResult,
-              editorContent,
-              initialContent,
-              editorRef,
-              setEditorContent,
-              setInitialContent,
-              currentPage,
-              storageSavePage,
-              setCurrentPage,
-              setForceRefresh,
-              setIsSaving
-            );
-            break;
+            case "APPLY_FORMATTING":
+              await handleApplyFormattingCommand(
+                commandResult,
+                editorContent,
+                initialContent,
+                editorRef,
+                setEditorContent,
+                setInitialContent,
+                currentPage,
+                storageSavePage,
+                setCurrentPage,
+                setForceRefresh,
+                setIsSaving
+              );
+              break;
 
-          case "MODIFY_BLOCK":
-            await handleModifyBlockCommand(
-              commandResult,
-              editorContent,
-              initialContent,
-              editorRef,
-              setEditorContent,
-              setInitialContent,
-              currentPage,
-              storageSavePage,
-              setCurrentPage,
-              setForceRefresh,
-              setIsSaving
-            );
-            break;
+            case "MODIFY_BLOCK":
+              await handleModifyBlockCommand(
+                commandResult,
+                editorContent,
+                initialContent,
+                editorRef,
+                setEditorContent,
+                setInitialContent,
+                currentPage,
+                storageSavePage,
+                setCurrentPage,
+                setForceRefresh,
+                setIsSaving
+              );
+              break;
 
-          case "UNDO":
-            await handleUndoCommand(
-              commandResult,
-              handleUndoWrapper,
-              undoStack
-            );
-            break;
+            case "DELETE_ALL":
+              await handleDeleteAllCommand(
+                commandResult,
+                editorContent,
+                initialContent,
+                editorRef,
+                setEditorContent,
+                setInitialContent,
+                currentPage,
+                storageSavePage,
+                setCurrentPage,
+                setForceRefresh,
+                setIsSaving
+              );
+              break;
 
-          case "REDO":
-            await handleRedoCommand(
-              commandResult,
-              handleRedoWrapper,
-              redoStack
-            );
-            break;
+            case "UNDO":
+              await handleUndoCommand(
+                commandResult,
+                handleUndoWrapper,
+                undoStack
+              );
+              break;
 
-          default:
-            console.warn("Unhandled command action:", commandResult.action);
-            Toast.show({
-              type: "info",
-              text1: "Command Not Supported",
-              text2: "This voice command is not supported yet",
-              visibilityTime: 2000,
-            });
+            case "REDO":
+              await handleRedoCommand(
+                commandResult,
+                handleRedoWrapper,
+                redoStack
+              );
+              break;
+
+            default:
+              console.warn("Unhandled command action:", commandResult.action);
+              Toast.show({
+                type: "info",
+                text1: "Command Not Supported",
+                text2: "This voice command is not supported yet",
+                visibilityTime: 2000,
+              });
+          }
+        } catch (error) {
+          console.error("Error processing command:", error);
+          Toast.show({
+            type: "error",
+            text1: "Command Error",
+            text2: "Failed to process voice command",
+            visibilityTime: 2000,
+          });
         }
-      } catch (error) {
-        console.error("Error processing command:", error);
-        Toast.show({
-          type: "error",
-          text1: "Command Error",
-          text2: "Failed to process voice command",
-          visibilityTime: 2000,
-        });
       }
     },
     [
@@ -690,7 +794,7 @@ const NoteScreen = () => {
       {/* Voice recorder */}
       <VoiceRecorder
         onCommandProcessed={handleCommandProcessed}
-        editorContent={editorContent || initialContent}
+        editorContent={editorContent || initialContent || []}
         theme={theme}
         isKeyboardVisible={isKeyboardVisible}
         keyboardHeight={keyboardHeight}

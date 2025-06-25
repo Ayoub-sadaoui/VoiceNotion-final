@@ -31,12 +31,16 @@ const ToolbarButton = ({
   );
 };
 
+// Ensure UI components can handle longer inputs and responses
+const MAX_INPUT_LENGTH = 1000; // Increase token limit for user input
+
 const KeyboardToolbar = ({
   editor,
   keyboardHeight = 0,
   isKeyboardVisible = false,
   onCreatePageLink, // Function to create new linked page
   onDeletePage, // Function to delete current page
+  onUploadImage, // Function to upload an image
   themeColors = {
     primary: "#007AFF",
     secondaryText: "#666666",
@@ -63,6 +67,8 @@ const KeyboardToolbar = ({
     quote: false,
     code: false,
   });
+
+  const [inputText, setInputText] = useState("");
 
   // Helper function to safely focus the editor
   const focusEditor = () => {
@@ -160,13 +166,40 @@ const KeyboardToolbar = ({
           });
           break;
         case "createPage":
-          if (onCreatePageLink && typeof onCreatePageLink === "function") {
+          console.log("=== Create page button pressed in KeyboardToolbar ===");
+          console.log("onCreatePageLink available:", !!onCreatePageLink);
+          if (onCreatePageLink) {
+            console.log("Calling onCreatePageLink...");
             onCreatePageLink();
+          } else {
+            console.warn("onCreatePageLink callback not available!");
           }
           break;
         case "deletePage":
-          if (onDeletePage && typeof onDeletePage === "function") {
+          if (onDeletePage) {
             onDeletePage();
+          }
+          break;
+        case "uploadImage":
+          if (onUploadImage && typeof onUploadImage === "function") {
+            onUploadImage();
+          }
+          break;
+        case "imageGenerator":
+          // Insert an AI image generator block
+          if (cursorPosition && cursorPosition.block) {
+            editor.insertBlocks(
+              [
+                {
+                  type: "imageGenerator",
+                  props: {
+                    prompt: "",
+                  },
+                },
+              ],
+              cursorPosition.block,
+              "after"
+            );
           }
           break;
         default:
@@ -276,6 +309,14 @@ const KeyboardToolbar = ({
   // Calculate toolbar position based on keyboard
   const toolbarBottomPosition = isKeyboardVisible ? keyboardHeight + 10 : 20;
 
+  const handleInputChange = (text) => {
+    if (text.length > MAX_INPUT_LENGTH) {
+      console.warn("Input exceeds maximum allowed length.");
+      return;
+    }
+    setInputText(text);
+  };
+
   return (
     <View
       style={[
@@ -342,6 +383,29 @@ const KeyboardToolbar = ({
             onPress={() => applyFormat("numberedList")}
             isActive={activeFormats.numberedList}
             tooltip="Numbered List"
+            themeColors={themeColors}
+          />
+        </View>
+
+        {/* Image Upload */}
+        <View
+          style={[
+            styles.toolbarGroup,
+            { borderRightColor: themeColors.toolbar.border },
+          ]}
+        >
+          <ToolbarButton
+            iconType="image"
+            onPress={() => applyFormat("uploadImage")}
+            isActive={false}
+            tooltip="Upload Image"
+            themeColors={themeColors}
+          />
+          <ToolbarButton
+            iconType="magic"
+            onPress={() => applyFormat("imageGenerator")}
+            isActive={false}
+            tooltip="AI Image Generator"
             themeColors={themeColors}
           />
         </View>
