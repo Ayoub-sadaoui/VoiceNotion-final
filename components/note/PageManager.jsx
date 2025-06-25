@@ -1,12 +1,105 @@
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import Toast from "react-native-toast-message";
 import React from "react";
 import { v4 as uuidv4 } from "uuid";
 
 /**
+ * Cross-platform event dispatcher
+ * Works in both web and React Native environments
+ */
+const safeDispatchEvent = (eventName, detail) => {
+  try {
+    if (typeof window !== "undefined") {
+      console.log(`Dispatching ${eventName} event with:`, detail);
+
+      // Check if we're in a web environment where CustomEvent is available
+      if (typeof CustomEvent === "function") {
+        window.dispatchEvent(new CustomEvent(eventName, { detail }));
+      } else {
+        // In React Native, use a regular Event with a data property
+        // This is a fallback that won't trigger errors
+        console.log(
+          `Using fallback for ${eventName} event (React Native environment)`
+        );
+
+        // We can still dispatch a basic event
+        const event = new Event(eventName);
+        // @ts-ignore - Add detail property manually
+        event.detail = detail;
+        window.dispatchEvent(event);
+
+        // Also dispatch into React Native's global namespace for better cross-platform support
+        if (global && typeof global === "object") {
+          if (!global._eventEmitter) {
+            global._eventEmitter = {};
+          }
+
+          if (!global._eventEmitter.listeners) {
+            global._eventEmitter.listeners = {};
+          }
+
+          if (global._eventEmitter.listeners[eventName]) {
+            global._eventEmitter.listeners[eventName].forEach((listener) => {
+              try {
+                listener({ detail });
+              } catch (listenerError) {
+                console.warn("Error in event listener:", listenerError);
+              }
+            });
+          }
+        }
+      }
+
+      // Also attempt to use the document for wider compatibility
+      try {
+        if (document && typeof document.createEvent === "function") {
+          const evt = document.createEvent("CustomEvent");
+          evt.initCustomEvent(eventName, true, true, detail);
+          document.dispatchEvent(evt);
+        }
+      } catch (docError) {
+        console.log("Document event dispatch not available");
+      }
+    }
+  } catch (error) {
+    // Log the error but don't crash the app
+    console.warn(`Error dispatching ${eventName} event:`, error);
+  }
+};
+
+/**
  * PageManager - Utility functions for managing pages
  */
 const PageManager = {
+  /**
+   * Dispatch a page update event
+   * @param {Object} page - Page object that was updated
+   */
+  dispatchPageUpdateEvent: (page) => {
+    if (page?.id) {
+      console.log("Preparing pageUpdated event for:", page.id, page.title);
+      safeDispatchEvent("pageUpdated", {
+        pageId: page.id,
+        title: page.title,
+        icon: page.icon,
+      });
+    }
+  },
+
+  /**
+   * Dispatch a page deleted event
+   * @param {Object|string} pageOrId - Page object or ID that was deleted
+   */
+  dispatchPageDeletedEvent: (pageOrId) => {
+    const pageId = typeof pageOrId === "string" ? pageOrId : pageOrId?.id;
+    if (pageId) {
+      console.log("Preparing pageDeleted event for:", pageId);
+      safeDispatchEvent("pageDeleted", {
+        pageId: pageId,
+      });
+    }
+  },
+
   /**
    * Create a nested page
    * @param {Object} currentPage - Current page object
@@ -46,6 +139,9 @@ const PageManager = {
         text2: "New page created",
         visibilityTime: 2000,
       });
+
+      // Dispatch event to update any page link blocks
+      PageManager.dispatchPageUpdateEvent(newPage);
 
       return newPage;
     } catch (error) {
@@ -145,6 +241,9 @@ const PageManager = {
             onPress: async () => {
               try {
                 await deletePage(page.id);
+
+                // Dispatch page deleted event
+                PageManager.dispatchPageDeletedEvent(page);
 
                 Toast.show({
                   type: "success",
@@ -261,12 +360,47 @@ const PageManager = {
 
       const savedPage = await storageSavePage(updatedPage);
       setCurrentPage(savedPage);
+
+      // Dispatch page update event
+      PageManager.dispatchPageUpdateEvent(savedPage);
+
       return savedPage;
     } catch (err) {
       console.error("Error during save:", err);
       return Promise.reject(err);
     } finally {
       setIsSaving(false);
+    }
+  },
+
+  /**
+   * Update a page and dispatch events
+   * @param {Object} page - Page object to update
+   * @param {Function} savePage - Function to save the page
+   * @returns {Promise<Object>} - Updated page object
+   */
+  updatePage: async (page, savePage) => {
+    try {
+      if (!page || !page.id) {
+        console.error("Cannot update page: Invalid page");
+        return null;
+      }
+
+      // Save the page
+      const updatedPage = await savePage(page);
+
+      if (!updatedPage) {
+        console.error("Failed to update page");
+        return null;
+      }
+
+      // Dispatch event to update any page link blocks
+      PageManager.dispatchPageUpdateEvent(updatedPage);
+
+      return updatedPage;
+    } catch (error) {
+      console.error("Error updating page:", error);
+      return null;
     }
   },
 };

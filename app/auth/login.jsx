@@ -12,7 +12,7 @@ import {
 import { signIn, signInWithGoogle } from "../../services/supabaseService";
 import { Link, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { FontAwesome, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { testGoogleOAuthConfig } from "../../utils/testSupabaseConfig";
 
 export default function LoginScreen() {
@@ -100,8 +100,6 @@ export default function LoginScreen() {
     }
   };
 
-
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -122,8 +120,8 @@ export default function LoginScreen() {
         )}
 
         <View style={styles.inputContainer}>
-          <FontAwesome
-            name="envelope"
+          <Ionicons
+            name="mail-outline"
             size={20}
             color="#666"
             style={styles.inputIcon}
@@ -139,8 +137,8 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.inputContainer}>
-          <FontAwesome
-            name="lock"
+          <Ionicons
+            name="lock-closed-outline"
             size={20}
             color="#666"
             style={styles.inputIcon}
@@ -195,8 +193,8 @@ export default function LoginScreen() {
             <ActivityIndicator color="#4285F4" />
           ) : (
             <>
-              <FontAwesome
-                name="google"
+              <Ionicons
+                name="logo-google"
                 size={20}
                 color="#4285F4"
                 style={styles.googleIcon}
@@ -205,8 +203,6 @@ export default function LoginScreen() {
             </>
           )}
         </TouchableOpacity>
-
-
       </View>
 
       <View style={styles.footer}>

@@ -27,6 +27,7 @@ const ContentEditor = ({
   nestedPages,
   recentTranscription,
   forceRefresh,
+  getPageById,
   theme,
   isDark,
 }) => {
@@ -57,6 +58,7 @@ const ContentEditor = ({
           onDeletePage={onDeletePage}
           nestedPages={nestedPages}
           recentTranscription={recentTranscription}
+          getPageById={getPageById}
           theme={themeName}
         />
       ) : (

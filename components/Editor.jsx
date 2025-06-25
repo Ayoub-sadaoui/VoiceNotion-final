@@ -18,6 +18,7 @@ const Editor = forwardRef((props, ref) => {
     keyboardHeight,
     isKeyboardVisible,
     recentTranscription,
+    getPageById,
     ...otherProps
   } = props;
 
@@ -242,6 +243,7 @@ const Editor = forwardRef((props, ref) => {
         currentPageId={currentPageId}
         keyboardHeight={keyboardHeight}
         isKeyboardVisible={isKeyboardVisible}
+        getPageById={getPageById}
         {...otherProps}
       />
     );

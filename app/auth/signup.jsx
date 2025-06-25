@@ -13,7 +13,7 @@ import {
 import { signUp } from "../../services/supabaseService";
 import { Link, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { FontAwesome, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function SignupScreen() {
   const [email, setEmail] = useState("");
@@ -100,8 +100,8 @@ export default function SignupScreen() {
             )}
 
             <View style={styles.inputContainer}>
-              <FontAwesome
-                name="envelope"
+              <Ionicons
+                name="mail-outline"
                 size={20}
                 color="#666"
                 style={styles.inputIcon}
@@ -117,8 +117,8 @@ export default function SignupScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <FontAwesome
-                name="lock"
+              <Ionicons
+                name="lock-closed-outline"
                 size={20}
                 color="#666"
                 style={styles.inputIcon}
@@ -140,8 +140,8 @@ export default function SignupScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <FontAwesome
-                name="lock"
+              <Ionicons
+                name="lock-closed-outline"
                 size={20}
                 color="#666"
                 style={styles.inputIcon}

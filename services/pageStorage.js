@@ -135,16 +135,26 @@ const createPage = async (
  * @param {string|null} userId - User ID for authenticated users
  * @returns {Promise<Object|null>} - Page object or null if not found
  */
-const getPageById = async (id, userId) => {
+const getPageById = async (id, userId = null) => {
   try {
-    if (!id || !userId) return null;
+    if (!id || !userId) {
+      console.warn("Missing id or userId in getPageById:", { id, userId });
+      return null;
+    }
 
-    // Fetch the note from Supabase through the noteService
-    const result = await fetchSupabaseNotesOnly(userId);
-    if (!result.success) return null;
+    // Fetch all pages - for small applications this is still efficient
+    // For larger apps, we would want to fetch just the specific page
+    const pages = await loadAllPages(userId);
 
-    // Find the note with the matching ID
-    return result.notes.find((note) => note.id === id) || null;
+    // Find the page with the matching ID
+    const page = pages.find((page) => page.id === id);
+
+    if (!page) {
+      console.warn(`Page with ID ${id} not found for user ${userId}`);
+      return null;
+    }
+
+    return page;
   } catch (error) {
     console.error("Error getting page by ID:", error);
     return null;

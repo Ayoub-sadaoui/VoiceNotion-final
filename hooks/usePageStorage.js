@@ -69,10 +69,53 @@ const usePageStorage = (userId = null) => {
         if (!userId) {
           throw new Error("User not authenticated");
         }
+        
+        // Find the existing page before update to detect changes
+        const oldPage = pages.find(p => p.id === page.id);
+        
+        // Save the page
         const updatedPage = await pageStorageService.savePage(page, userId);
+        
+        // Update the pages state
         setPages((prev) =>
           prev.map((p) => (p.id === updatedPage.id ? updatedPage : p))
         );
+        
+        // Dispatch page update event if title or icon changed
+        if (oldPage && (oldPage.title !== updatedPage.title || oldPage.icon !== updatedPage.icon)) {
+          console.log(`Dispatching pageUpdated event for page ${updatedPage.id} - title: "${updatedPage.title}", icon: ${updatedPage.icon}`);
+          
+          try {
+            // Dispatch pageUpdated event on window
+            if (typeof window !== 'undefined') {
+              const event = new CustomEvent('pageUpdated', {
+                detail: {
+                  pageId: updatedPage.id,
+                  title: updatedPage.title,
+                  icon: updatedPage.icon
+                }
+              });
+              window.dispatchEvent(event);
+              
+              // Also dispatch on document for wider compatibility
+              document.dispatchEvent(event);
+            }
+            
+            // React Native compatibility - if global event emitter exists
+            if (global && typeof global === 'object' && global._eventEmitter) {
+              if (typeof global._eventEmitter.emit === 'function') {
+                global._eventEmitter.emit('pageUpdated', {
+                  pageId: updatedPage.id,
+                  title: updatedPage.title,
+                  icon: updatedPage.icon
+                });
+              }
+            }
+          } catch (eventError) {
+            console.warn('Error dispatching page update event:', eventError);
+          }
+        }
+        
         return updatedPage;
       } catch (err) {
         setError(err.message || "Failed to save page");
@@ -80,7 +123,7 @@ const usePageStorage = (userId = null) => {
         throw err;
       }
     },
-    [userId]
+    [userId, pages]
   );
 
   // Delete a page and its children
@@ -90,11 +133,52 @@ const usePageStorage = (userId = null) => {
         if (!userId) {
           throw new Error("User not authenticated");
         }
+        
+        // Find the page before deletion to include its details in the event
+        const pageToDelete = pages.find(p => p.id === id);
+        
         const result = await pageStorageService.deletePage(id, userId);
+        
         if (result) {
+          // Dispatch page deleted event
+          if (pageToDelete) {
+            console.log(`Dispatching pageDeleted event for page ${id}`);
+            
+            try {
+              // Dispatch pageDeleted event on window
+              if (typeof window !== 'undefined') {
+                const event = new CustomEvent('pageDeleted', {
+                  detail: {
+                    pageId: id,
+                    title: pageToDelete.title,
+                    icon: pageToDelete.icon
+                  }
+                });
+                window.dispatchEvent(event);
+                
+                // Also dispatch on document for wider compatibility
+                document.dispatchEvent(event);
+              }
+              
+              // React Native compatibility - if global event emitter exists
+              if (global && typeof global === 'object' && global._eventEmitter) {
+                if (typeof global._eventEmitter.emit === 'function') {
+                  global._eventEmitter.emit('pageDeleted', {
+                    pageId: id,
+                    title: pageToDelete.title,
+                    icon: pageToDelete.icon
+                  });
+                }
+              }
+            } catch (eventError) {
+              console.warn('Error dispatching page deleted event:', eventError);
+            }
+          }
+          
           // Refresh pages after deletion to ensure we have the latest state
           await loadPages();
         }
+        
         return result;
       } catch (err) {
         setError(err.message || "Failed to delete page");
@@ -102,7 +186,7 @@ const usePageStorage = (userId = null) => {
         throw err;
       }
     },
-    [loadPages, userId]
+    [loadPages, userId, pages]
   );
 
   // Get root pages
