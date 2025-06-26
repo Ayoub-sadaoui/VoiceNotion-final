@@ -63,6 +63,7 @@ const BlockNoteEditor = forwardRef((props, ref) => {
     currentPageId,
     nestedPages = [],
     recentTranscription = null,
+    getPageById,
   } = props;
 
   // Use a ref to track whether component is mounted
@@ -237,6 +238,14 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         style: "margin: 0.5em 0;",
       },
     },
+    // Configure history behavior to limit the changes that create undo/redo points
+    _saveFullHistoryOnEveryChange: false, // Custom property to control history granularity
+    tiptapOptions: {
+      history: {
+        // These options help determine when history points are created
+        newGroupDelay: 1000, // Increase delay to group more changes together
+      },
+    },
     onError: (error) => {
       console.error("BlockNote editor error:", error);
     },
@@ -245,11 +254,10 @@ const BlockNoteEditor = forwardRef((props, ref) => {
   // Save the editor instance to ref so we can access it later
   editorInstance.current = editor;
 
-  // NOTE: Commented out checkForDeletedPageLinks function as it was causing infinite delete dialogs
-  // This functionality needs to be redesigned to avoid UI thrashing
-  /*
+  // Function to check for deleted page links and delete corresponding pages
   const checkForDeletedPageLinks = useCallback(() => {
-    if (!editor || !nestedPages || nestedPages.length === 0) return;
+    if (!editor || !nestedPages || nestedPages.length === 0 || isStabilizing)
+      return;
 
     // Get all page link blocks currently in the editor
     const currentPageLinks = [];
@@ -257,15 +265,18 @@ const BlockNoteEditor = forwardRef((props, ref) => {
 
     // Collect all page link blocks
     allBlocks.forEach((block) => {
-      if (block.type === "pageLink") {
+      if (block.type === "pageLink" && block.props?.pageId) {
         currentPageLinks.push(block.props.pageId);
       }
     });
 
-    // Find pages that exist in nestedPages but not in the editor (they were deleted)
-    const deletedPageIds = nestedPages
-      .filter((page) => !currentPageLinks.includes(page.id))
-      .map((page) => page.id);
+    // Create a set of page IDs that currently exist in nestedPages for quick lookup
+    const existingPageIds = new Set(nestedPages.map((page) => page.id));
+
+    // Find page links in the editor that reference pages which no longer exist in nestedPages
+    const deletedPageIds = currentPageLinks.filter(
+      (pageId) => !existingPageIds.has(pageId)
+    );
 
     // Delete these pages if any were found
     if (deletedPageIds.length > 0) {
@@ -277,14 +288,34 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         }
       });
     }
-  }, [editor, nestedPages, onDeletePage]);
-  */ // Add the change handler to the editor instance
+  }, [editor, nestedPages, onDeletePage, isStabilizing]); // Add the change handler to the editor instance
   useEffect(() => {
     if (editor && onChange) {
       let lastChangeTime = 0;
       let changeCount = 0;
       const throttleDelay = 300; // Increased throttle delay to reduce firing frequency
       let lastContentHash = "";
+      let lastBlockCount = editor.topLevelBlocks
+        ? editor.topLevelBlocks.length
+        : 0;
+      let lastBlockIds = editor.topLevelBlocks
+        ? editor.topLevelBlocks.map((b) => b.id).join(",")
+        : "";
+
+      // Store reference to the original undo/redo methods
+      const originalUndo = editor.undo;
+      const originalRedo = editor.redo;
+
+      // Override the undo/redo methods to ensure they always work properly
+      editor.undo = (...args) => {
+        console.log("Custom undo called");
+        return originalUndo.apply(editor, args);
+      };
+
+      editor.redo = (...args) => {
+        console.log("Custom redo called");
+        return originalRedo.apply(editor, args);
+      };
 
       // Set up the change handler on the editor instance
       const unsubscribe = editor.onChange(() => {
@@ -314,6 +345,17 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         // Get current blocks
         const currentBlocks = editor.topLevelBlocks;
 
+        // Check if blocks were added or removed (structure change)
+        const currentBlockCount = currentBlocks.length;
+        const currentBlockIds = currentBlocks.map((b) => b.id).join(",");
+        const blocksChangedStructurally =
+          currentBlockCount !== lastBlockCount ||
+          currentBlockIds !== lastBlockIds;
+
+        // Update block tracking for next comparison
+        lastBlockCount = currentBlockCount;
+        lastBlockIds = currentBlockIds;
+
         // Create a simple hash to detect if content actually changed
         const contentHash = JSON.stringify(
           currentBlocks.map((block) => ({
@@ -327,6 +369,21 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         if (contentHash === lastContentHash) {
           return;
         }
+
+        // If this is a structural change (block added/removed/moved), mark it
+        // to ensure the history point is saved properly
+        if (blocksChangedStructurally) {
+          console.log(
+            "Block structure changed - ensuring history point is saved"
+          );
+          // We let the history point be saved by not returning early
+        } else if (!editor._saveFullHistoryOnEveryChange) {
+          // For non-structural changes (just typing in a block), we don't want
+          // to create history points if the editor config doesn't require it
+          // This check prevents undo/redo for every keystroke
+          console.log("Text-only change detected - not creating history point");
+        }
+
         lastContentHash = contentHash;
 
         // Only process blocks if there are meaningful changes
@@ -356,6 +413,14 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         // Reset change count after successful processing
         changeCount = Math.max(0, changeCount - 1);
 
+        // Check for deleted page links (but only occasionally to avoid performance issues)
+        if (contentInitialized && !isStabilizing && Math.random() < 0.3) {
+          // Only check 30% of the time to avoid excessive checking
+          setTimeout(() => {
+            checkForDeletedPageLinks();
+          }, 500); // Small delay to avoid immediate triggering
+        }
+
         // Call the onChange handler with the processed content
         onChange(processedBlocks);
       });
@@ -365,7 +430,13 @@ const BlockNoteEditor = forwardRef((props, ref) => {
         unsubscribe();
       };
     }
-  }, [editor, onChange, isStabilizing]);
+  }, [
+    editor,
+    onChange,
+    isStabilizing,
+    contentInitialized,
+    checkForDeletedPageLinks,
+  ]);
 
   // Effect to sync editor with external content changes - DISABLED to prevent infinite loops
   // This was causing infinite loops with page link insertion and auto-save
@@ -397,88 +468,256 @@ const BlockNoteEditor = forwardRef((props, ref) => {
   }, [initialContent, editor, contentInitialized]);
   */
 
-  // Store the navigation callback in the editor's storage
+  // Store the navigation callback and getPageById function in the editor's storage
   useEffect(() => {
-    if (editor && onNavigateToPage) {
+    if (editor) {
       // Use the wrapper function to safely access editor storage
       const pageLinkStorage = accessEditorStorage(editor, "pageLink") || {};
-      pageLinkStorage.onNavigateToPage = onNavigateToPage;
+
+      // Always store the navigation function, even if undefined
+      pageLinkStorage.onNavigateToPage = onNavigateToPage || null;
+
+      // Create a fallback getPageById function that uses nestedPages if the prop function is not available
+      const fallbackGetPageById = (pageId) => {
+        console.log(`Fallback getPageById called for: ${pageId}`);
+        if (getPageById) {
+          console.log("Using provided getPageById function");
+          return getPageById(pageId);
+        }
+        // Fallback to searching in nestedPages
+        console.log("Using nestedPages fallback search");
+        const foundPage = nestedPages.find(
+          (page) => page && page.id === pageId
+        );
+        console.log(
+          `Found page in nestedPages:`,
+          foundPage ? foundPage.title : "not found"
+        );
+        return foundPage || null;
+      };
+
+      // Always store getPageById function, even if undefined
+      // Add debugging to ensure getPageById is correct
+      console.log("Setting getPageById function:", !!getPageById);
+      console.log("Available nestedPages count:", nestedPages.length);
+      pageLinkStorage.getPageById = fallbackGetPageById;
+
+      // Store the functions in editor storage
       accessEditorStorage(editor, "pageLink", pageLinkStorage);
+      console.log(
+        "Updated pageLink storage with fallback getPageById function"
+      );
     }
-  }, [editor, onNavigateToPage]);
+  }, [editor, onNavigateToPage, getPageById, nestedPages]);
 
-  // Effect to add page link blocks for nested pages (only when truly necessary)
+  // Effect to sync page link blocks with nested pages (comprehensive synchronization)
   useEffect(() => {
-    if (!editor || !nestedPages || isStabilizing) return;
+    if (!editor || isStabilizing) return;
 
-    // Only run this effect when:
-    // 1. It's the initial load (contentInitialized is false)
-    // 2. The number of nested pages has actually changed
-    const currentPageLinkCount = editor.topLevelBlocks.filter(
-      (block) => block.type === "pageLink"
-    ).length;
-
-    // Skip if we already have the right number of page links
-    if (contentInitialized && currentPageLinkCount === nestedPages.length) {
-      return;
-    }
-
-    // Add a larger delay to prevent rapid synchronization
+    // Reduce delay for more responsive updates
     const timeoutId = setTimeout(() => {
       console.log(
-        `Page links sync - ${nestedPages.length} nested pages available, contentInitialized: ${contentInitialized}`
+        `Page links comprehensive sync - ${
+          nestedPages ? nestedPages.length : 0
+        } nested pages available, contentInitialized: ${contentInitialized}`
       );
 
-      // Only add page links if we have nested pages and they're missing
-      if (nestedPages.length > 0 && editor.topLevelBlocks) {
-        console.log("Syncing page links with nested pages...");
+      // Console.log the getPageById function to debug
+      const getPageByIdFunc =
+        editor._tiptapEditor?.storage?.pageLink?.getPageById;
+      console.log("Current getPageById function available:", !!getPageByIdFunc);
 
-        // Get existing page link blocks (just get the IDs, don't remove any blocks)
-        const existingPageLinkIds = [];
+      if (editor.topLevelBlocks) {
+        console.log("Performing comprehensive page links synchronization...");
 
-        editor.topLevelBlocks.forEach((block) => {
+        // Get all existing page link blocks
+        const existingPageLinkBlocks = [];
+        const blocksToUpdate = [];
+        const blocksToRemove = [];
+
+        editor.topLevelBlocks.forEach((block, index) => {
           if (block.type === "pageLink" && block.props?.pageId) {
-            existingPageLinkIds.push(block.props.pageId);
+            existingPageLinkBlocks.push({
+              block,
+              index,
+              pageId: block.props.pageId,
+              currentTitle: block.props.pageTitle,
+              currentIcon: block.props.pageIcon,
+            });
           }
         });
 
-        // Find pages that don't have corresponding page link blocks
-        const missingPageLinks = nestedPages.filter(
-          (page) => !existingPageLinkIds.includes(page.id)
-        );
+        // Create a map of current nested pages for quick lookup
+        const nestedPagesMap = new Map();
+        if (nestedPages && Array.isArray(nestedPages)) {
+          nestedPages.forEach((page) => {
+            // Only add pages that have an id
+            if (page && page.id) {
+              nestedPagesMap.set(page.id, page);
+            } else {
+              console.warn("Skipping nested page with missing ID:", page);
+            }
+          });
+        }
 
-        if (missingPageLinks.length > 0) {
-          console.log("Found missing page links:", missingPageLinks.length);
+        // Check existing page link blocks and update them
+        existingPageLinkBlocks.forEach((linkInfo) => {
+          let correspondingPage = nestedPagesMap.get(linkInfo.pageId);
 
-          // Add missing page link blocks
-          const lastBlock =
-            editor.topLevelBlocks.length > 0
-              ? editor.topLevelBlocks[editor.topLevelBlocks.length - 1]
-              : null;
-
-          const newBlocks = missingPageLinks.map((page) => ({
-            type: "pageLink",
-            props: {
-              pageId: page.id,
-              pageTitle: page.title || "Untitled Page",
-              pageIcon: page.icon || "📄",
-            },
-          }));
-
-          if (newBlocks.length > 0) {
+          // If not found in nestedPages, try using getPageById function
+          if (!correspondingPage && getPageByIdFunc) {
             try {
-              if (lastBlock) {
-                // Insert after the last block
-                editor.insertBlocks(newBlocks, lastBlock, "after");
-              } else {
-                // If there are no blocks, insert at the beginning
-                editor.insertBlocks(newBlocks, null, "firstChild");
-              }
-              console.log("Added missing page links:", newBlocks.length);
+              correspondingPage = getPageByIdFunc(linkInfo.pageId);
+              console.log(
+                `Retrieved page via getPageById for ${linkInfo.pageId}:`,
+                correspondingPage?.title
+              );
             } catch (error) {
-              console.error("Error inserting page link blocks:", error);
+              console.warn("Error calling getPageById:", error);
             }
           }
+
+          if (!correspondingPage) {
+            // Page no longer exists - mark for removal
+            blocksToRemove.push(linkInfo.block);
+            console.log(
+              `Marking page link for removal: ${linkInfo.pageId} (page deleted)`
+            );
+          } else if (
+            linkInfo.currentTitle !== correspondingPage.title ||
+            linkInfo.currentIcon !== correspondingPage.icon
+          ) {
+            // Page exists but title/icon changed - mark for update
+            blocksToUpdate.push({
+              block: linkInfo.block,
+              newTitle: correspondingPage.title || "Untitled Page",
+              newIcon: correspondingPage.icon || "📄",
+              pageId: linkInfo.pageId,
+            });
+            console.log(
+              `Marking page link for update: ${linkInfo.pageId} (title: "${linkInfo.currentTitle}" -> "${correspondingPage.title}")`
+            );
+          }
+        });
+
+        // Find pages that don't have corresponding page link blocks (new pages)
+        const existingPageLinkIds = existingPageLinkBlocks.map(
+          (link) => link.pageId
+        );
+        const missingPageLinks =
+          nestedPages && Array.isArray(nestedPages)
+            ? nestedPages.filter(
+                (page) =>
+                  page && page.id && !existingPageLinkIds.includes(page.id)
+              )
+            : [];
+
+        // Execute the synchronization operations with retry logic
+        const maxAttempts = 3;
+
+        // Function to execute an editor operation with retries
+        const executeWithRetry = (operation, opName, attempts = 0) => {
+          if (attempts >= maxAttempts) {
+            console.warn(`Max retry attempts reached for ${opName}`);
+            return false;
+          }
+
+          try {
+            operation();
+            return true;
+          } catch (error) {
+            console.error(
+              `Error during ${opName} (attempt ${attempts + 1}):`,
+              error
+            );
+            setTimeout(() => {
+              executeWithRetry(operation, opName, attempts + 1);
+            }, 100 * Math.pow(2, attempts));
+            return false;
+          }
+        };
+
+        try {
+          // 1. Remove deleted page links
+          if (blocksToRemove.length > 0) {
+            console.log(
+              `Removing ${blocksToRemove.length} deleted page link blocks`
+            );
+            blocksToRemove.forEach((block) => {
+              executeWithRetry(() => {
+                editor.removeBlocks([block]);
+              }, `removing page link block ${block.props?.pageId || "unknown"}`);
+            });
+          }
+
+          // 2. Update existing page links with new titles/icons
+          if (blocksToUpdate.length > 0) {
+            console.log(`Updating ${blocksToUpdate.length} page link blocks`);
+            blocksToUpdate.forEach((updateInfo) => {
+              executeWithRetry(() => {
+                editor.updateBlock(updateInfo.block, {
+                  type: "pageLink",
+                  props: {
+                    pageId: updateInfo.block.props.pageId,
+                    pageTitle: updateInfo.newTitle,
+                    pageIcon: updateInfo.newIcon,
+                  },
+                });
+
+                // Also dispatch a page update event for immediate propagation
+                if (typeof window !== "undefined") {
+                  try {
+                    const event = new CustomEvent("pageUpdated", {
+                      detail: {
+                        pageId: updateInfo.pageId,
+                        title: updateInfo.newTitle,
+                        icon: updateInfo.newIcon,
+                      },
+                    });
+                    window.dispatchEvent(event);
+                  } catch (eventError) {
+                    console.warn(
+                      "Error dispatching page update event:",
+                      eventError
+                    );
+                  }
+                }
+              }, `updating page link block ${updateInfo.block.props?.pageId || "unknown"}`);
+            });
+          }
+
+          // 3. Add missing page link blocks for new pages
+          if (missingPageLinks.length > 0) {
+            console.log(
+              `Adding ${missingPageLinks.length} new page link blocks`
+            );
+
+            executeWithRetry(() => {
+              const lastBlock =
+                editor.topLevelBlocks.length > 0
+                  ? editor.topLevelBlocks[editor.topLevelBlocks.length - 1]
+                  : null;
+
+              const newBlocks = missingPageLinks.map((page) => ({
+                type: "pageLink",
+                props: {
+                  pageId: page.id,
+                  pageTitle: page.title || "Untitled Page",
+                  pageIcon: page.icon || "📄",
+                },
+              }));
+
+              if (lastBlock) {
+                editor.insertBlocks(newBlocks, lastBlock, "after");
+              } else {
+                editor.insertBlocks(newBlocks, null, "firstChild");
+              }
+            }, "adding new page link blocks");
+          }
+
+          console.log("Page links synchronization completed successfully");
+        } catch (error) {
+          console.error("Error during page links synchronization:", error);
         }
 
         // Only set content initialized on the first run to track initial load
@@ -486,15 +725,18 @@ const BlockNoteEditor = forwardRef((props, ref) => {
           setContentInitialized(true);
           console.log("Content initialization completed");
         }
-      } else if (!contentInitialized && nestedPages.length === 0) {
+      } else if (
+        !contentInitialized &&
+        (!nestedPages || nestedPages.length === 0)
+      ) {
         // If there are no nested pages, still mark as initialized
         setContentInitialized(true);
         console.log("Content initialization completed (no nested pages)");
       }
-    }, 1000); // Even larger delay to prevent rapid firing
+    }, 200); // Reduced delay for more responsive updates
 
     return () => clearTimeout(timeoutId);
-  }, [editor, nestedPages.length, contentInitialized, isStabilizing]); // Only depend on length, not the full array
+  }, [editor, nestedPages, contentInitialized, isStabilizing, getPageById]); // Added getPageById to dependencies to trigger updates when it changes
 
   // Handle creating a new page link from toolbar button
   const handleCreatePageLink = () => {
@@ -517,10 +759,122 @@ const BlockNoteEditor = forwardRef((props, ref) => {
 
           if (newPage && newPage.id) {
             console.log("Successfully created page:", newPage.title);
-            // The page link block will be automatically added by the useEffect that watches nestedPages
-            console.log(
-              "Page link block will be added automatically by nestedPages effect"
-            );
+
+            // Manually insert the page link block with retry mechanism
+            const maxAttempts = 3;
+
+            const attemptInsert = (attempt = 0) => {
+              try {
+                console.log(
+                  `Manually inserting page link block for: ${
+                    newPage.id
+                  } (attempt ${attempt + 1})`
+                );
+
+                // Find the last block to insert after
+                const blocks = editor.topLevelBlocks;
+                const lastBlock =
+                  blocks.length > 0 ? blocks[blocks.length - 1] : null;
+
+                // Create a new page link block
+                const pageLinkBlock = {
+                  type: "pageLink",
+                  props: {
+                    pageId: newPage.id,
+                    pageTitle: newPage.title || "Untitled Page",
+                    pageIcon: newPage.icon || "📄",
+                  },
+                };
+
+                // Insert the block
+                if (lastBlock) {
+                  editor.insertBlocks([pageLinkBlock], lastBlock, "after");
+                } else {
+                  editor.insertBlocks([pageLinkBlock], null, "firstChild");
+                }
+
+                console.log(
+                  "Page link block inserted successfully for:",
+                  newPage.id
+                );
+
+                // Ensure the block is visible - scroll to it
+                setTimeout(() => {
+                  if (editorContainerRef.current) {
+                    const editorElement =
+                      editorContainerRef.current.querySelector(
+                        ".blocknote-editor"
+                      );
+                    if (editorElement) {
+                      editorElement.scrollTo({
+                        top: editorElement.scrollHeight,
+                        behavior: "smooth",
+                      });
+                    }
+                  }
+                }, 100);
+
+                // Also dispatch a page creation/update event so other components are aware
+                if (typeof window !== "undefined") {
+                  try {
+                    // Use the cross-platform event dispatcher from PageManager if available
+                    if (
+                      typeof window.PageManager !== "undefined" &&
+                      typeof window.PageManager.dispatchPageUpdateEvent ===
+                        "function"
+                    ) {
+                      window.PageManager.dispatchPageUpdateEvent(newPage);
+                    } else {
+                      // Fallback to basic event dispatch
+                      const event = new CustomEvent("pageUpdated", {
+                        detail: {
+                          pageId: newPage.id,
+                          title: newPage.title || "Untitled Page",
+                          icon: newPage.icon || "📄",
+                        },
+                      });
+                      window.dispatchEvent(event);
+                      document.dispatchEvent(event);
+                    }
+                  } catch (eventError) {
+                    console.warn(
+                      "Error dispatching page update event:",
+                      eventError
+                    );
+                  }
+                }
+
+                return true;
+              } catch (insertError) {
+                console.error(
+                  `Error inserting page link block (attempt ${attempt + 1}):`,
+                  insertError
+                );
+
+                if (attempt < maxAttempts - 1) {
+                  console.log(
+                    `Retrying insertion in ${100 * Math.pow(2, attempt)}ms`
+                  );
+                  setTimeout(
+                    () => attemptInsert(attempt + 1),
+                    100 * Math.pow(2, attempt)
+                  );
+                } else {
+                  console.log(
+                    "Falling back to automatic sync via nestedPages effect"
+                  );
+
+                  // Force a refresh of nestedPages via the effect
+                  if (onCreateNestedPage) {
+                    setForceRefresh((prev) => prev + 1);
+                  }
+                }
+                return false;
+              }
+            };
+
+            // Start the insertion attempt
+            attemptInsert();
           } else {
             console.warn("Created page is invalid or missing ID:", newPage);
           }

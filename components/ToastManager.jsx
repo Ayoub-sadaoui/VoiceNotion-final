@@ -200,7 +200,9 @@ const ToastManager = () => {
     >
       <CustomToast
         visible={visible}
-        onHide={() => setVisible(false)}
+        /* Removed onHide callback that triggered state updates within CustomToast's animation cycle,
+           fixing the React 18 "useInsertionEffect must not schedule updates" error. ToastManager
+           already handles visibility state, so this callback was redundant. */
         {...toastProps}
       />
     </View>

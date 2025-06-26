@@ -9,11 +9,17 @@ import {
   ScrollView,
   Switch,
   Alert,
+  ActivityIndicator,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../../utils/themeContext";
 import { useAuth } from "../../../contexts/AuthContext";
 import { signOut, getCurrentUser } from "../../../services/supabaseService";
+import {
+  fetchPendingInvites,
+  acceptInvite,
+} from "../../../services/collaborationService";
 import { syncPendingNotesWithSupabase } from "../../../services/noteService";
 import ScreenHeader from "../../../components/ScreenHeader";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -23,9 +29,25 @@ export default function ProfileScreen() {
   const { user, setUser } = useAuth();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
 
   // Log user metadata when profile screen loads
   useEffect(() => {
+    // Fetch pending collaboration invites
+    const loadInvites = async () => {
+      if (!user?.email) return;
+      try {
+        setInvitesLoading(true);
+        const { data, error } = await fetchPendingInvites(user.email);
+        if (!error && data) setPendingInvites(data);
+      } catch (err) {
+        console.error("Error fetching invites", err);
+      } finally {
+        setInvitesLoading(false);
+      }
+    };
+    loadInvites();
     if (user) {
       console.log(
         "Profile Screen - User metadata:",
@@ -161,6 +183,18 @@ export default function ProfileScreen() {
       ),
     },
     {
+      id: "editProfile",
+      icon: "create-outline",
+      title: "Edit Profile",
+      screen: "/profile/edit",
+    },
+    {
+      id: "invitations",
+      icon: "mail-outline",
+      title: "Invitations",
+      screen: "/profile/invites",
+    },
+    {
       id: "backup",
       icon: "cloud-upload-outline",
       title: "Backup & Sync",
@@ -178,90 +212,164 @@ export default function ProfileScreen() {
       title: "About",
       screen: "/profile/about",
     },
+    {
+      id: "logout",
+      icon: "log-out-outline",
+      title: "Logout",
+      action: handleLogout,
+      isLogout: true,
+    },
   ];
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
     >
-      <ScreenHeader title="Profile" />
-      <ScrollView style={styles.content}>
-        <View
-          style={[styles.profileSection, { borderBottomColor: theme.border }]}
-        >
-          <View style={styles.avatarContainer}>
-            {hasAvatar ? (
-              <Image
-                source={{ uri: user.user_metadata.avatar_url }}
-                style={styles.avatar}
-                onError={(e) => {
-                  console.error(
-                    "Error loading avatar image:",
-                    e.nativeEvent.error
-                  );
-                }}
-              />
-            ) : (
-              <View
-                style={[
-                  styles.avatarPlaceholder,
-                  { backgroundColor: theme.primary },
-                ]}
-              >
-                <Text style={styles.avatarText}>{getInitials()}</Text>
-              </View>
-            )}
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        automaticallyAdjustContentInsets={false}
+        contentInsetAdjustmentBehavior="never"
+      >
+        {/* Profile Header Section */}
+        <View style={styles.profileHeader}>
+          <View
+            style={[styles.avatarWrapper, { backgroundColor: theme.surface }]}
+          >
+            <View style={styles.avatarContainer}>
+              {hasAvatar ? (
+                <Image
+                  source={{ uri: user.user_metadata.avatar_url }}
+                  style={styles.avatar}
+                  onError={(e) => {
+                    console.error(
+                      "Error loading avatar image:",
+                      e.nativeEvent.error
+                    );
+                  }}
+                />
+              ) : (
+                <View
+                  style={[
+                    styles.avatarPlaceholder,
+                    { backgroundColor: theme.primary },
+                  ]}
+                >
+                  <Text style={styles.avatarText}>{getInitials()}</Text>
+                </View>
+              )}
+            </View>
           </View>
+
           <Text style={[styles.userName, { color: theme.text }]}>
             {user?.user_metadata?.full_name || "User"}
           </Text>
-          <Text style={[styles.userEmail, { color: theme.secondaryText }]}>
-            {user?.email || "No email"}
-          </Text>
 
-          <TouchableOpacity
-            style={[styles.editButton, { borderColor: theme.primary }]}
-            onPress={() => router.push("/profile/edit")}
+          <View
+            style={[styles.emailContainer, { backgroundColor: theme.surface }]}
           >
-            <Text style={[styles.editButtonText, { color: theme.primary }]}>
-              Edit Profile
+            <Text style={[styles.userEmail, { color: theme.primary }]}>
+              {user?.email || "No email"}
             </Text>
-          </TouchableOpacity>
+          </View>
         </View>
+
+        {/* Pending Invites Section */}
+        {invitesLoading ? (
+          <ActivityIndicator
+            size="small"
+            color={theme.primary}
+            style={{ margin: 16 }}
+          />
+        ) : (
+          pendingInvites.length > 0 && (
+            <View
+              style={[styles.invitesSection, { borderColor: theme.border }]}
+            >
+              {pendingInvites.map((inv) => (
+                <View
+                  key={inv.id}
+                  style={[
+                    styles.inviteRow,
+                    { borderBottomColor: theme.border },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.text }}>
+                      Page: {inv.page_id.substring(0, 8)}...
+                    </Text>
+                    <Text style={{ color: theme.secondaryText, fontSize: 12 }}>
+                      From: {inv.inviter_email || inv.inviter_user_id}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.acceptButton,
+                      { backgroundColor: theme.primary },
+                    ]}
+                    onPress={async () => {
+                      try {
+                        const { error } = await acceptInvite(inv.id);
+                        if (error) throw error;
+                        setPendingInvites((prev) =>
+                          prev.filter((i) => i.id !== inv.id)
+                        );
+                      } catch (err) {
+                        Alert.alert("Error", "Failed to accept invite");
+                        console.error(err);
+                      }
+                    }}
+                  >
+                    <Text style={{ color: "white", fontWeight: "600" }}>
+                      Accept
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )
+        )}
 
         <View style={styles.settingsSection}>
           {settingsItems.map((item) => (
             <TouchableOpacity
               key={item.id}
               style={[styles.settingsItem, { borderBottomColor: theme.border }]}
-              onPress={() => item.screen && router.push(item.screen)}
+              onPress={() => {
+                if (item.action) {
+                  item.action();
+                } else if (item.screen) {
+                  router.push(item.screen);
+                }
+              }}
             >
-              <Ionicons name={item.icon} size={22} color={theme.icon} />
-              <Text style={[styles.settingsItemText, { color: theme.text }]}>
+              <Ionicons
+                name={item.icon}
+                size={22}
+                color={item.isLogout ? theme.error : theme.icon}
+              />
+              <Text
+                style={[
+                  styles.settingsItemText,
+                  { color: item.isLogout ? theme.error : theme.text },
+                ]}
+              >
                 {item.title}
               </Text>
               {item.rightElement ? (
                 item.rightElement
-              ) : (
+              ) : !item.isLogout ? (
                 <Ionicons
                   name="chevron-forward"
                   size={20}
                   color={theme.icon}
                   style={styles.chevron}
                 />
-              )}
+              ) : null}
             </TouchableOpacity>
           ))}
         </View>
-
-        <TouchableOpacity
-          style={[styles.logoutButton, { backgroundColor: theme.surface }]}
-          onPress={handleLogout}
-        >
-          <Text style={[styles.logoutButtonText, { color: theme.error }]}>
-            Log Out
-          </Text>
-        </TouchableOpacity>
 
         <Text style={[styles.versionText, { color: theme.tertiaryText }]}>
           sayNote v1.0.0
@@ -275,37 +383,71 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  content: {
+  scrollContainer: {
     flex: 1,
   },
-  profileSection: {
+  scrollContent: {
+    paddingTop: 20,
+    paddingBottom: 150, // Large bottom padding to ensure content is above nav bar
+  },
+  profileHeader: {
     alignItems: "center",
-    paddingVertical: 30,
-    borderBottomWidth: 1,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+  },
+  avatarWrapper: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 15,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
   },
   avatarContainer: {
-    marginBottom: 15,
+    marginBottom: 0,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  avatarPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarText: {
     color: "white",
-    fontSize: 30,
+    fontSize: 36,
     fontWeight: "600",
   },
   userName: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "600",
-    marginBottom: 5,
+    marginBottom: 15,
+    textAlign: "center",
+  },
+  emailContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
   },
   userEmail: {
     fontSize: 16,
+    fontWeight: "500",
   },
   settingsSection: {
-    marginTop: 20,
+    marginTop: 10,
   },
   settingsItem: {
     flexDirection: "row",
@@ -330,38 +472,24 @@ const styles = StyleSheet.create({
     marginRight: 10,
     fontSize: 14,
   },
-  logoutButton: {
-    margin: 20,
-    paddingVertical: 15,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  logoutButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
   versionText: {
     textAlign: "center",
     fontSize: 14,
     marginBottom: 20,
   },
-  editButton: {
-    marginTop: 10,
+  invitesSection: {
+    marginVertical: 10,
+    paddingHorizontal: 16,
+  },
+  inviteRow: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderWidth: 2,
-    borderRadius: 10,
-    alignItems: "center",
+    borderBottomWidth: 1,
   },
-  editButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  avatarPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: "center",
-    alignItems: "center",
+  acceptButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
   },
 });

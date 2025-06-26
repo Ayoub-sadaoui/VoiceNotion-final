@@ -1,9 +1,5 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 
-// Removed invalid import and added workaround for Deno type
-// Use `any` type for Deno to avoid errors
-const Deno: any = globalThis.Deno;
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -48,17 +44,6 @@ serve(async (req) => {
         JSON.stringify({
           error: "Prompt is too long. Please keep it under 1000 characters.",
         }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Added logic to handle long prompts
-    if (prompt.length > 500) {
-      return new Response(
-        JSON.stringify({ error: "Prompt is too long. Please shorten it." }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },

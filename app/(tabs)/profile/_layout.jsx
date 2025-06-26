@@ -1,5 +1,5 @@
 import { Stack } from "expo-router";
-import { useTheme } from "../../utils/themeContext";
+import { useTheme } from "../../../utils/themeContext";
 
 export default function ProfileLayout() {
   const { theme } = useTheme();
@@ -18,6 +18,7 @@ export default function ProfileLayout() {
         contentStyle: {
           backgroundColor: theme.background,
         },
+        headerShown: false, // Removed the heading in the profile screen
       }}
     />
   );

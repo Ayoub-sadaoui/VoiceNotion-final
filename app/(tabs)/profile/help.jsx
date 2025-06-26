@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useRouter, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useTheme } from "../../utils/themeContext";
+import { useTheme } from "../../../utils/themeContext";
 
 export default function HelpScreen() {
   const { theme } = useTheme();

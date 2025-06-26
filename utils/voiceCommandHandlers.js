@@ -999,29 +999,121 @@ export const handleModifyBlockCommand = async (
   }
 };
 
-// Added logic to handle long and complex prompts for image generation
-export const handleImageGenerationCommand = async (prompt) => {
+/**
+ * Handle image generation command
+ */
+export const handleGenerateImageCommand = async (
+  commandResult,
+  insertTranscriptionDirectly,
+  setIsSaving
+) => {
   try {
-    if (prompt.length > 500) {
-      throw new Error("Prompt is too long. Please shorten it.");
+    setIsSaving(true);
+
+    const { prompt } = commandResult;
+    if (!prompt) {
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "No image prompt provided",
+        visibilityTime: 2000,
+      });
+      return false;
     }
 
-    const response = await geminiService.generateImage(prompt);
-    if (response.success) {
-      return response.imageUrl;
+    console.log("Generating image with prompt:", prompt);
+
+    // Import the imageGenerationService
+    const imageGenerationService =
+      require("../services/imageGenerationService").default;
+
+    // Create an AI header block for the image generation
+    const headerBlock = createAIHeaderBlock("AI Generated Image");
+
+    // Add a loading placeholder
+    const loadingBlock = createParagraphBlock(
+      "Generating image... please wait."
+    );
+    insertTranscriptionDirectly([headerBlock, loadingBlock], false);
+
+    // Generate the image
+    const result = await imageGenerationService.generateImage(prompt);
+
+    if (result.success && result.imageUrl) {
+      // Create an image block with the generated image
+      const imageBlock = imageGenerationService.createImageBlock(
+        result.imageUrl,
+        prompt
+      );
+
+      // Replace the loading block with the image
+      insertTranscriptionDirectly([headerBlock, imageBlock], true);
+
+      Toast.show({
+        type: "success",
+        text1: "Image Generated",
+        text2: "AI image has been added to your note",
+        visibilityTime: 2000,
+      });
+      return true;
     } else {
-      throw new Error("Image generation failed.");
+      // If generation failed, replace with error message
+      const errorBlock = createParagraphBlock(
+        "Failed to generate image: " + (result.error || "Unknown error")
+      );
+      insertTranscriptionDirectly([headerBlock, errorBlock], true);
+
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to generate image",
+        visibilityTime: 2000,
+      });
+      return false;
     }
   } catch (error) {
-    console.error("Error handling image generation command:", error);
+    console.error("Error generating image:", error);
     Toast.show({
       type: "error",
-      text1: "Image Generation Error",
-      text2: error.message,
+      text1: "Error",
+      text2: "Failed to generate image: " + error.message,
+      visibilityTime: 2000,
     });
+    return false;
+  } finally {
+    setIsSaving(false);
   }
 };
 
+// Add support for longer prompts in voice command handlers
+const MAX_PROMPT_LENGTH = 1000; // Increase token limit for voice commands
+
+export const handleVoiceCommand = async (command, context) => {
+  console.log("Handling voice command:", command);
+
+  // Validate command length
+  if (command.length > MAX_PROMPT_LENGTH) {
+    Toast.show({
+      type: "error",
+      text1: "Command too long",
+      text2: "Please shorten your voice command.",
+    });
+    return;
+  }
+
+  try {
+    const response = await geminiService.processCommand(command, context);
+    console.log("Voice command response:", response);
+    return response;
+  } catch (error) {
+    console.error("Error handling voice command:", error);
+    Toast.show({
+      type: "error",
+      text1: "Command failed",
+      text2: "Unable to process your voice command.",
+    });
+  }
+};
 
 // Export other voice command handlers as needed
 export const voiceCommandHandlers = {
@@ -1031,7 +1123,7 @@ export const voiceCommandHandlers = {
   handleCreatePageCommand,
   handleApplyFormattingCommand,
   handleModifyBlockCommand,
-  handleImageGenerationCommand,
+  handleGenerateImageCommand,
 };
 
 export default voiceCommandHandlers;

@@ -410,8 +410,30 @@ export default function HomeScreen() {
   // Transform flat list of pages into hierarchical tree
   const [pageTree, setPageTree] = useState([]);
 
+  // Shared pages state
+  const [sharedPages, setSharedPages] = useState([]);
+  const [sharedPageTree, setSharedPageTree] = useState([]);
+
+  // Private pages state
+  const [privatePages, setPrivatePages] = useState([]);
+  const [privatePageTree, setPrivatePageTree] = useState([]);
+
   useEffect(() => {
     if (pages && pages.length > 0) {
+      // Separate shared and private pages
+      const shared = pages.filter((page) => page.isSharedWithUser);
+      const privatePagesFlat = pages.filter((page) => !page.isSharedWithUser);
+
+      // Build hierarchical trees for both shared and private pages
+      const sharedTree = buildPageTree(shared);
+      const privateTree = buildPageTree(privatePagesFlat);
+
+      setSharedPages(shared);
+      setSharedPageTree(sharedTree);
+      setPrivatePages(privatePagesFlat);
+      setPrivatePageTree(privateTree);
+
+      // Keep the original pageTree for compatibility
       const tree = buildPageTree(pages);
       setPageTree(tree);
 
@@ -424,11 +446,15 @@ export default function HomeScreen() {
       setRecentPages(sorted.slice(0, 5)); // Get top 5 most recent pages
     } else {
       setPageTree([]);
+      setSharedPages([]);
+      setSharedPageTree([]);
+      setPrivatePages([]);
+      setPrivatePageTree([]);
       setRecentPages([]);
     }
   }, [pages]);
 
-  // Handle deleting a page
+  // Fetch shared pages from Supabase
   const handleDeletePage = async (pageId) => {
     try {
       console.log("Deleting page:", pageId);
@@ -700,11 +726,11 @@ export default function HomeScreen() {
 
           <View style={styles.pagesSection}>
             <Text style={[styles.sectionTitle, { color: theme.secondaryText }]}>
-              All Pages
+              Private Pages
             </Text>
 
             <FlatList
-              data={pageTree}
+              data={privatePageTree}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <PageTreeItem
@@ -737,7 +763,7 @@ export default function HomeScreen() {
                     style={[styles.emptyText, { color: theme.secondaryText }]}
                   >
                     {user
-                      ? "No pages found"
+                      ? "No private pages found"
                       : "Please sign in to view your notes"}
                   </Text>
                   {user && (
@@ -789,6 +815,80 @@ export default function HomeScreen() {
                       </TouchableOpacity>
                     </View>
                   )}
+                </View>
+              }
+            />
+          </View>
+
+          {/* Shared Pages Section */}
+          <View style={styles.pagesSection}>
+            <Text style={[styles.sectionTitle, { color: theme.secondaryText }]}>
+              Shared Pages
+            </Text>
+            <FlatList
+              data={sharedPageTree}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <PageTreeItem
+                  page={item}
+                  onPress={handlePagePress}
+                  theme={theme || {}}
+                  expanded={expandedIds[item.id] || false}
+                  onToggleExpand={handleToggleExpand}
+                  onAddSubpage={handleAddSubpage}
+                  onDeletePage={handleDeletePage}
+                />
+              )}
+              contentContainerStyle={styles.pagesList}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Ionicons
+                    name="document-outline"
+                    size={64}
+                    color={theme.tertiaryText}
+                  />
+                  <Text
+                    style={[styles.emptyText, { color: theme.secondaryText }]}
+                  >
+                    No shared pages found
+                  </Text>
+                </View>
+              }
+            />
+          </View>
+
+          {/* Private Pages Section */}
+          <View style={styles.pagesSection}>
+            <Text style={[styles.sectionTitle, { color: theme.secondaryText }]}>
+              Private Pages
+            </Text>
+            <FlatList
+              data={privatePageTree}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <PageTreeItem
+                  page={item}
+                  onPress={handlePagePress}
+                  theme={theme || {}}
+                  expanded={expandedIds[item.id] || false}
+                  onToggleExpand={handleToggleExpand}
+                  onAddSubpage={handleAddSubpage}
+                  onDeletePage={handleDeletePage}
+                />
+              )}
+              contentContainerStyle={styles.pagesList}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Ionicons
+                    name="document-outline"
+                    size={64}
+                    color={theme.tertiaryText}
+                  />
+                  <Text
+                    style={[styles.emptyText, { color: theme.secondaryText }]}
+                  >
+                    No private pages found
+                  </Text>
                 </View>
               }
             />

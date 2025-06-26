@@ -15,14 +15,31 @@ export const supabaseToLocalNote = (note) => {
   console.log(
     `Converting Supabase note to local format: ID=${note.id}, Title="${
       note.title
-    }", Icon=${note.icon || "📄"}`
+    }", Icon=${note.icon || "📄"}, IsShared=${note.isSharedWithUser || false}`
   );
+
+  // Safely parse the content field so BlockNote gets the correct structure
+  let parsedContent = [];
+  if (note.content) {
+    if (typeof note.content === "string") {
+      try {
+        parsedContent = JSON.parse(note.content);
+      } catch (e) {
+        console.warn(
+          "Failed to parse note.content JSON, defaulting to empty array",
+          e
+        );
+      }
+    } else {
+      parsedContent = note.content;
+    }
+  }
 
   const localNote = {
     id: note.id,
     title: note.title,
-    content: note.content || {},
-    contentJson: note.content ? JSON.stringify(note.content) : "{}",
+    content: parsedContent,
+    contentJson: JSON.stringify(parsedContent),
     parentId: note.parent_id,
     createdAt: note.created_at,
     updatedAt: note.updated_at,
@@ -30,6 +47,7 @@ export const supabaseToLocalNote = (note) => {
     folderId: note.folder_id,
     isDeleted: note.is_deleted,
     icon: note.icon || "📄", // Add icon field
+    isSharedWithUser: note.isSharedWithUser || false, // Add shared status
   };
 
   // console.log("Local note format:", JSON.stringify(localNote));
@@ -71,7 +89,7 @@ export const getLocalNotes = async (userId) => {
     const { data, error } = await supabase
       .from("notes")
       .select("*")
-      .eq("user_id", userId)
+
       .eq("is_deleted", false);
 
     if (error) throw error;
@@ -99,7 +117,7 @@ export const getLocalNote = async (noteId, userId) => {
       .from("notes")
       .select("*")
       .eq("id", noteId)
-      .eq("user_id", userId)
+
       .single();
 
     if (error) throw error;
@@ -155,9 +173,7 @@ export const deleteLocalNote = async (noteId, userId) => {
     const { error } = await supabase
       .from("notes")
       .update({ is_deleted: true })
-      .eq("id", noteId)
-      .eq("user_id", userId);
-
+      .eq("id", noteId);
     if (error) throw error;
 
     return true;
@@ -228,7 +244,7 @@ export const updateNote = async (userId, noteId, updates) => {
       .from("notes")
       .select("*")
       .eq("id", noteId)
-      .eq("user_id", userId)
+
       .single();
 
     if (fetchError) {
@@ -353,12 +369,7 @@ export const deleteNote = async (userId, noteId, hardDelete = false) => {
     if (hardDelete) {
       // Hard delete - completely remove from Supabase
       console.log(`Hard deleting note ${noteId} for user ${userId}`);
-      const { error } = await supabase
-        .from("notes")
-        .delete()
-        .eq("id", noteId)
-        .eq("user_id", userId);
-
+      const { error } = await supabase.from("notes").delete().eq("id", noteId);
       if (error) throw error;
     } else {
       // Soft delete - set is_deleted flag to true
@@ -366,9 +377,7 @@ export const deleteNote = async (userId, noteId, hardDelete = false) => {
       const { error } = await supabase
         .from("notes")
         .update({ is_deleted: true })
-        .eq("id", noteId)
-        .eq("user_id", userId);
-
+        .eq("id", noteId);
       if (error) throw error;
     }
 
@@ -389,7 +398,7 @@ export const fetchNotesFromSupabase = async (userId) => {
     const { data, error } = await supabase
       .from("notes")
       .select("*")
-      .eq("user_id", userId)
+
       .eq("is_deleted", false)
       .order("updated_at", { ascending: false });
 
@@ -418,29 +427,65 @@ export const fetchSupabaseNotesOnly = async (userId) => {
 
     console.log(`Fetching notes from Supabase for user ${userId}`);
 
-    const { data, error } = await supabase
+    // First fetch notes owned by the user
+    const { data: ownedNotes, error: ownedError } = await supabase
       .from("notes")
       .select("*")
       .eq("user_id", userId)
       .eq("is_deleted", false)
       .order("updated_at", { ascending: false });
 
-    if (error) throw error;
+    if (ownedError) throw ownedError;
 
-    console.log(`Fetched ${data.length} notes from Supabase`);
+    // Then fetch notes shared with the user
+    const { data: sharedNotes, error: sharedError } = await supabase
+      .from("notes")
+      .select(
+        `
+        *,
+        page_collaborators!inner (
+          user_id
+        )
+      `
+      )
+      .eq("page_collaborators.user_id", userId)
+      .eq("is_deleted", false)
+      .neq("user_id", userId) // Exclude notes owned by the user
+      .order("updated_at", { ascending: false });
+
+    if (sharedError) throw sharedError;
+
+    // Combine owned and shared notes
+    const allNotes = [
+      ...(ownedNotes || []).map((note) => ({
+        ...note,
+        isSharedWithUser: false,
+      })),
+      ...(sharedNotes || []).map((note) => ({
+        ...note,
+        isSharedWithUser: true,
+      })),
+    ];
+
+    console.log(
+      `Fetched ${ownedNotes?.length || 0} owned notes and ${
+        sharedNotes?.length || 0
+      } shared notes from Supabase`
+    );
 
     // Log the first few notes for debugging
-    if (data.length > 0) {
+    if (allNotes.length > 0) {
       console.log("First note from Supabase:", {
-        id: data[0].id,
-        title: data[0].title,
+        id: allNotes[0].id,
+        title: allNotes[0].title,
+        isSharedWithUser: allNotes[0].isSharedWithUser,
         has_content:
-          !!data[0].content && Object.keys(data[0].content).length > 0,
+          !!allNotes[0].content && Object.keys(allNotes[0].content).length > 0,
       });
     }
 
     // Convert to local format
-    const notes = data.map((note) => supabaseToLocalNote(note));
+    const notes = allNotes.map((note) => supabaseToLocalNote(note));
 
     return { success: true, notes };
   } catch (error) {

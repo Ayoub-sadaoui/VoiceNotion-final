@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import ActionSheet from "react-native-actionsheet";
 
 /**
  * PageHeader component - Displays the page title, icon, and navigation controls
@@ -22,6 +23,7 @@ const PageHeader = ({
   onRedo,
   canUndo,
   canRedo,
+  onShare, // new callback
   isSaving,
   theme,
   multilineTitle = false,
@@ -29,6 +31,7 @@ const PageHeader = ({
   // Use local state for the title input to avoid React Native TextInput issues
   const [localTitle, setLocalTitle] = useState(title);
   const [showSavingIndicator, setShowSavingIndicator] = useState(false);
+  const actionSheetRef = useRef(null);
 
   // Update local title when prop changes
   if (title !== localTitle && title !== undefined) {
@@ -78,6 +81,14 @@ const PageHeader = ({
               </Text>
             </View>
           )}
+
+          {/* Overflow menu */}
+          <TouchableOpacity
+            style={[styles.historyButton, { backgroundColor: theme.cardBackground }]}
+            onPress={() => actionSheetRef.current?.show()}
+          >
+            <Ionicons name="ellipsis-vertical" size={20} color={theme.text} />
+          </TouchableOpacity>
 
           {/* Undo/Redo buttons */}
           <View style={styles.historyButtons}>
@@ -144,6 +155,18 @@ const PageHeader = ({
           />
         </View>
       </View>
+      {/* Action sheet for overflow menu */}
+      <ActionSheet
+        ref={actionSheetRef}
+        options={["Share", "Cancel"]}
+        cancelButtonIndex={1}
+        destructiveButtonIndex={-1}
+        onPress={(index) => {
+          if (index === 0 && onShare) {
+            onShare();
+          }
+        }}
+      />
     </View>
   );
 };

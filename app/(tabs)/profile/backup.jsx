@@ -12,9 +12,9 @@ import {
 } from "react-native";
 import { useRouter, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useTheme } from "../../utils/themeContext";
-import { useAuth } from "../../contexts/AuthContext";
-import { syncPendingNotesWithSupabase } from "../../services/noteService";
+import { useTheme } from "../../../utils/themeContext";
+import { useAuth } from "../../../contexts/AuthContext";
+import { syncPendingNotesWithSupabase } from "../../../services/noteService";
 
 export default function BackupScreen() {
   const { theme } = useTheme();

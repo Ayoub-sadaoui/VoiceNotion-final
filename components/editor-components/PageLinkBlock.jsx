@@ -156,14 +156,9 @@ const DynamicPageLinkContent = ({
     }
   };
 
-  // Initial fetch and periodic refresh
+  // Initial fetch only – rely on pageUpdated/pageDeleted events for later changes
   useEffect(() => {
     fetchPageData();
-
-    // Set up periodic refresh every 2 seconds to catch external changes more quickly
-    const refreshInterval = setInterval(fetchPageData, 2000);
-
-    return () => clearInterval(refreshInterval);
   }, [pageId, initialTitle, initialIcon]);
 
   // Re-fetch when the component re-renders with new initialTitle or initialIcon

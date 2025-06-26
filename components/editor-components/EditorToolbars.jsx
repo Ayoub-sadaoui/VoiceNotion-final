@@ -155,8 +155,7 @@ const EditorToolbars = () => {
             />
 
             <CreateLinkButton key="createLinkButton" />
-            <UndoButton />
-            <RedoButton />
+
           </FormattingToolbar>
         </div>
       )}

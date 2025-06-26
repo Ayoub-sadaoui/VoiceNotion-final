@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, SafeAreaView, ScrollView } from "react-native";
 import { useRouter, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useTheme } from "../../utils/themeContext";
+import { useTheme } from "../../../utils/themeContext";
 
 // Import the voice commands content
 const voiceCommandsContent = `
