@@ -16,13 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.sayNote.app",
-      "buildNumber": "1",
-      "infoPlist": {
-        "NSMicrophoneUsageDescription": "sayNote needs access to your microphone to record voice notes and commands.",
-        "NSPhotoLibraryUsageDescription": "sayNote needs access to your photo library to allow you to add images to your notes.",
-        "NSCameraUsageDescription": "sayNote needs access to your camera to allow you to take photos for your notes.",
-        "UIBackgroundModes": ["audio"]
-      }
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
@@ -31,28 +25,11 @@
       },
       "package": "com.sayNote.app",
       "versionCode": 1,
-      "navigationBar": {
-        "visible": true,
-        "barStyle": "dark-content",
-        "backgroundColor": "#F3F8FF"
-      },
       "permissions": [
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "CAMERA"
-      ],
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
-            {
-              "scheme": "sayNote"
-            }
-          ],
-          "category": ["BROWSABLE", "DEFAULT"]
-        }
       ]
     },
     "web": {
@@ -60,27 +37,12 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router",
-      "expo-navigation-bar",
-      [
-        "expo-secure-store",
-        {
-          "faceIDPermission": "sayNote needs to access your Face ID to secure your notes."
-        }
-      ],
-      [
-        "expo-av",
-        {
-          "microphonePermission": "sayNote needs access to your microphone to record voice notes and commands."
-        }
-      ],
-      "expo-font"
+      "expo-router"
     ],
     "extra": {
       "router": {
         "origin": false
       },
-      "expo-navigation-bar": {},
       "eas": {
         "projectId": "04216545-231c-484f-a103-ddc21fa9140a"
       }
