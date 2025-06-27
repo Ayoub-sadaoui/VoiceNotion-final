@@ -12,7 +12,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.sayNote.app",
@@ -21,7 +23,9 @@
         "NSMicrophoneUsageDescription": "sayNote needs access to your microphone to record voice notes and commands.",
         "NSPhotoLibraryUsageDescription": "sayNote needs access to your photo library to allow you to add images to your notes.",
         "NSCameraUsageDescription": "sayNote needs access to your camera to allow you to take photos for your notes.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
@@ -40,7 +44,9 @@
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "CAMERA"
+        "CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "intentFilters": [
         {
@@ -51,7 +57,10 @@
               "scheme": "sayNote"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -82,7 +91,7 @@
       },
       "expo-navigation-bar": {},
       "eas": {
-        "projectId": "04216545-231c-484f-a103-ddc21fa9140a"
+        "projectId": "4bee69d0-ddb3-4c0e-bea2-27c56ab22c27"
       }
     },
     "experiments": {
@@ -90,7 +99,6 @@
     },
     "owner": "ayoubsddd",
     "updates": {
-      "url": "https://u.expo.dev/04216545-231c-484f-a103-ddc21fa9140a",
       "fallbackToCacheTimeout": 0,
       "enabled": false
     }
