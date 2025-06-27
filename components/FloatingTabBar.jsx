@@ -1,41 +1,14 @@
-import React, { useEffect } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, useColorScheme } from "react-native";
+import React from "react";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../utils/themeContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
 const FloatingTabBar = ({ state, descriptors, navigation }) => {
-  const { theme, isDark } = useTheme();
-  const systemColorScheme = useColorScheme();
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-
-  // Use system color scheme as fallback
-  const isReallyDark = isDark ?? (systemColorScheme === "dark");
-
-  // Ensure we have a valid theme with fallbacks - default to dark theme
-  const safeTheme = {
-    surface: theme?.surface || (isReallyDark ? "#07111F" : "#FFFFFF"),
-    shadow: theme?.shadow || (isReallyDark ? "rgba(0, 0, 0, 0.2)" : "rgba(0, 0, 0, 0.08)"),
-    background: theme?.background || (isReallyDark ? "#00040A" : "#F3F8FF"),
-    primary: theme?.primary || "#1E6EE1",
-    secondaryText: theme?.secondaryText || (isReallyDark ? "#A9B4C4" : "#5A6169"),
-  };
-
-  // Log theme debugging info
-  console.log("FloatingTabBar theme debug:", {
-    isDark,
-    isReallyDark,
-    systemColorScheme,
-    surface: safeTheme.surface,
-    themeAvailable: !!theme,
-  });
-
-  // Force re-render when theme changes
-  useEffect(() => {
-    console.log("FloatingTabBar: Theme changed, re-rendering with surface:", safeTheme.surface);
-  }, [isDark, theme, systemColorScheme]);
 
   // Log available routes for debugging
   console.log(
@@ -61,9 +34,6 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
     return { iconName: "home", label: "Home" }; // Default fallback
   };
 
-  // Debug: Log when component renders
-  console.log("FloatingTabBar render - Current background:", safeTheme.surface);
-
   return (
     <View
       style={[
@@ -78,8 +48,8 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
         style={[
           styles.tabBar,
           {
-            backgroundColor: safeTheme.surface,
-            shadowColor: safeTheme.shadow,
+            backgroundColor: theme.surface,
+            shadowColor: theme.shadow,
           },
         ]}
       >
@@ -119,17 +89,17 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
               onPress={onPress}
               style={[
                 styles.tab,
-                isFocused && { backgroundColor: safeTheme.background },
+                isFocused && { backgroundColor: theme.background },
               ]}
             >
               <View style={styles.tabContent}>
                 <Ionicons
                   name={isFocused ? iconName : `${iconName}-outline`}
                   size={22}
-                  color={isFocused ? safeTheme.primary : safeTheme.secondaryText}
+                  color={isFocused ? theme.primary : theme.secondaryText}
                 />
                 {isFocused && (
-                  <Text style={[styles.tabText, { color: safeTheme.primary }]}>
+                  <Text style={[styles.tabText, { color: theme.primary }]}>
                     {label}
                   </Text>
                 )}
