@@ -8,10 +8,29 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import ActionSheet from "react-native-actionsheet";
 
-/**
- * PageHeader component - Displays the page title, icon, and navigation controls
+/*  historyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  roleIndicator: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  roleText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+});der component - Displays the page title, icon, and navigation controls
  */
 const PageHeader = ({
   title = "",
@@ -27,11 +46,12 @@ const PageHeader = ({
   isSaving,
   theme,
   multilineTitle = false,
+  canShare = true, // NEW: Whether the user can share this page
+  userRole = "owner", // NEW: User's role on this page ('owner' or 'collaborator')
 }) => {
   // Use local state for the title input to avoid React Native TextInput issues
   const [localTitle, setLocalTitle] = useState(title);
   const [showSavingIndicator, setShowSavingIndicator] = useState(false);
-  const actionSheetRef = useRef(null);
 
   // Update local title when prop changes
   if (title !== localTitle && title !== undefined) {
@@ -82,13 +102,32 @@ const PageHeader = ({
             </View>
           )}
 
-          {/* Overflow menu */}
-          <TouchableOpacity
-            style={[styles.historyButton, { backgroundColor: theme.cardBackground }]}
-            onPress={() => actionSheetRef.current?.show()}
-          >
-            <Ionicons name="ellipsis-vertical" size={20} color={theme.text} />
-          </TouchableOpacity>
+          {/* Share button - only show for page owners */}
+          {canShare && (
+            <TouchableOpacity
+              style={[
+                styles.historyButton,
+                { backgroundColor: theme.cardBackground },
+              ]}
+              onPress={onShare}
+            >
+              <Ionicons name="share-outline" size={20} color={theme.text} />
+            </TouchableOpacity>
+          )}
+
+          {/* Show role indicator for collaborators */}
+          {userRole === "collaborator" && (
+            <View
+              style={[
+                styles.roleIndicator,
+                { backgroundColor: theme.secondary },
+              ]}
+            >
+              <Text style={[styles.roleText, { color: theme.background }]}>
+                Shared
+              </Text>
+            </View>
+          )}
 
           {/* Undo/Redo buttons */}
           <View style={styles.historyButtons}>
@@ -155,18 +194,6 @@ const PageHeader = ({
           />
         </View>
       </View>
-      {/* Action sheet for overflow menu */}
-      <ActionSheet
-        ref={actionSheetRef}
-        options={["Share", "Cancel"]}
-        cancelButtonIndex={1}
-        destructiveButtonIndex={-1}
-        onPress={(index) => {
-          if (index === 0 && onShare) {
-            onShare();
-          }
-        }}
-      />
     </View>
   );
 };

@@ -29,6 +29,13 @@ import {
   handleRedoCommand,
 } from "../../utils/historyUtils";
 import {
+  canSharePage,
+  canDeletePage,
+  getUserPageRole,
+  logUserPermissions,
+} from "../../utils/pagePermissions";
+import { useNavigationBarStyle } from "../../hooks/useNavigationBarStyle";
+import {
   createParagraphBlock,
   handleAIContentCommand,
   handleDeleteBlockCommand,
@@ -50,6 +57,7 @@ import PageHeader from "../../components/note/PageHeader";
 import VoiceRecorder from "../../components/note/VoiceRecorder";
 import IconPicker from "../../components/note/IconPicker";
 import PageManager from "../../components/note/PageManager";
+import ShareModal from "../../components/collaboration/ShareModal";
 
 /**
  * NoteScreen component - Displays and manages a single note
@@ -66,6 +74,9 @@ const NoteScreen = () => {
 
   // Auth context
   const { user } = useAuth();
+
+  // Ensure navigation bar matches theme
+  useNavigationBarStyle();
 
   // Debug user object
   useEffect(() => {
@@ -91,10 +102,36 @@ const NoteScreen = () => {
   const [title, setTitle] = useState("");
   const [icon, setIcon] = useState("📄");
   const [showIconPicker, setShowIconPicker] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [nestedPages, setNestedPages] = useState([]);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [multilineTitle, setMultilineTitle] = useState(false);
+
+  // User permissions for the current page
+  const userRole =
+    currentPage && user ? getUserPageRole(currentPage, user.id) : "none";
+  const canShare =
+    currentPage && user ? canSharePage(currentPage, user.id) : false;
+  const canDelete =
+    currentPage && user ? canDeletePage(currentPage, user.id) : false;
+
+  // Debug: Log permission calculation
+  useEffect(() => {
+    if (currentPage && user) {
+      console.log("🔐 NoteScreen - Permission Debug:", {
+        pageId: currentPage.id?.substring(0, 8) + "...",
+        pageTitle: currentPage.title,
+        pageUserId: currentPage.user_id?.substring(0, 8) + "...",
+        currentUserId: user.id?.substring(0, 8) + "...",
+        isSharedWithUser: currentPage.isSharedWithUser,
+        userRole,
+        canShare,
+        canDelete,
+        userIdMatch: currentPage.user_id === user.id,
+      });
+    }
+  }, [currentPage, user, userRole, canShare, canDelete]);
 
   // Refs
   const saveTimer = useRef(null);
@@ -143,6 +180,11 @@ const NoteScreen = () => {
             // Initialize title and icon
             setTitle(page.title || "");
             setIcon(page.icon || "📄");
+
+            // Log user permissions for debugging
+            if (user) {
+              logUserPermissions(page, user.id, "NoteScreen");
+            }
 
             // Check if title needs multiline
             const pageTitle = page.title || "";
@@ -304,6 +346,22 @@ const NoteScreen = () => {
       }
     });
   }, [handleSave, currentPage, router]);
+
+  // Handle share button press
+  const handleShare = useCallback(() => {
+    // Only allow sharing if user has permission
+    if (canShare) {
+      setShowShareModal(true);
+    } else {
+      Toast.show({
+        type: "error",
+        text1: "Permission Denied",
+        text2: "Only the page owner can share this page",
+        position: "bottom",
+        visibilityTime: 3000,
+      });
+    }
+  }, [canShare]);
 
   // Load nested pages (simplified to avoid circular dependencies)
   const loadNestedPages = useCallback(async () => {
@@ -769,6 +827,9 @@ const NoteScreen = () => {
         isSaving={isSaving}
         theme={theme}
         multilineTitle={multilineTitle}
+        onShare={handleShare} // Use proper share handler with permission check
+        canShare={canShare} // Pass permission to share
+        userRole={userRole} // Pass user role for UI indicators
       />
 
       {/* Content editor */}
@@ -783,7 +844,7 @@ const NoteScreen = () => {
         isKeyboardVisible={isKeyboardVisible}
         currentPageId={pageId}
         onCreateNestedPage={handleCreateNestedPage}
-        onDeletePage={handleDeletePage}
+        onDeletePage={canDelete ? handleDeletePage : null} // Only pass delete handler if user can delete
         nestedPages={nestedPages}
         recentTranscription={recentTranscription}
         forceRefresh={forceRefresh}
@@ -807,6 +868,16 @@ const NoteScreen = () => {
         onSelect={handleIconChange}
         theme={theme}
       />
+
+      {/* Share modal - only show if user can share */}
+      {canShare && (
+        <ShareModal
+          visible={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          pageId={pageId}
+          pageTitle={title}
+        />
+      )}
     </SafeAreaView>
   );
 };

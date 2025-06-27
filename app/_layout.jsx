@@ -11,6 +11,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import ToastManager from "../components/ToastManager";
 import { AuthProvider } from "../contexts/AuthContext";
 import { ModalProvider, useModal } from "../contexts/ModalContext";
+import { useNavigationBarStyle } from "../hooks/useNavigationBarStyle";
 
 // Prevent the splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -31,6 +32,9 @@ const customTransition = {
 // Separate component that uses the theme context
 function StackNavigator() {
   const { theme } = useTheme();
+
+  // Configure navigation bar styling
+  useNavigationBarStyle();
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>

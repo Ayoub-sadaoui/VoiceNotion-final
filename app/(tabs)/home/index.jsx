@@ -18,11 +18,12 @@ import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
 import { useRouter, Link, useFocusEffect } from "expo-router";
 import { useTheme } from "../../../utils/themeContext";
 import { useAuth } from "../../../contexts/AuthContext";
+import { canDeletePage } from "../../../utils/pagePermissions";
 import ScreenHeader from "../../../components/ScreenHeader";
 import HomeHeader from "../../../components/HomeHeader";
 import FloatingActionButton from "../../../components/FloatingActionButton";
 import usePageStorage from "../../../hooks/usePageStorage";
-import { buildPageTree } from "../../../utils/pageUtils";
+import { buildPageTree, buildSharedPageTree } from "../../../utils/pageUtils";
 import {
   GestureHandlerRootView,
   Swipeable,
@@ -40,6 +41,8 @@ const PageTreeItem = ({
   onToggleExpand,
   onAddSubpage,
   onDeletePage,
+  canDelete = true, // NEW: Whether this page can be deleted by current user
+  currentUserId, // NEW: Current user ID for permission checks
 }) => {
   // State to track if this item's children are expanded
   const [isExpanded, setIsExpanded] = useState(expanded);
@@ -73,8 +76,37 @@ const PageTreeItem = ({
     [page.id, onAddSubpage]
   );
 
+  // Check if current user can delete this specific page
+  const userCanDeleteThisPage = currentUserId
+    ? canDeletePage(page, currentUserId)
+    : false;
+  const shouldShowDelete = canDelete && userCanDeleteThisPage;
+
+  // Debug: Log permission check for this page
+  useEffect(() => {
+    if (currentUserId && page) {
+      console.log("🔐 PageTreeItem - Permission Debug:", {
+        pageId: page.id?.substring(0, 8) + "...",
+        pageTitle: page.title,
+        pageUserId: page.user_id?.substring(0, 8) + "...",
+        currentUserId: currentUserId?.substring(0, 8) + "...",
+        isSharedWithUser: page.isSharedWithUser,
+        userCanDeleteThisPage,
+        shouldShowDelete,
+        canDeleteProp: canDelete,
+        userIdMatch: page.user_id === currentUserId,
+        hasUserId: !!page.user_id,
+        hasCurrentUserId: !!currentUserId,
+        pageUserIdType: typeof page.user_id,
+        currentUserIdType: typeof currentUserId,
+      });
+    }
+  }, [page, currentUserId, userCanDeleteThisPage, shouldShowDelete, canDelete]);
+
   // Handle delete page
   const handleDeletePage = useCallback(() => {
+    // Only proceed if user has permission
+    if (!shouldShowDelete) return;
     // Close swipeable
     if (swipeableRef.current) {
       swipeableRef.current.close();
@@ -143,10 +175,15 @@ const PageTreeItem = ({
         ]
       );
     }
-  }, [page.id, onDeletePage]);
+  }, [page.id, page.title, onDeletePage, shouldShowDelete]);
 
   // Render right swipe actions
   const renderRightActions = (progress, dragX) => {
+    // Don't show delete action if user doesn't have permission
+    if (!shouldShowDelete) {
+      return null;
+    }
+
     const trans = dragX.interpolate({
       inputRange: [-100, 0],
       outputRange: [0, 100],
@@ -214,6 +251,8 @@ const PageTreeItem = ({
               onToggleExpand={onToggleExpand}
               onAddSubpage={onAddSubpage}
               onDeletePage={onDeletePage}
+              canDelete={canDelete}
+              currentUserId={currentUserId}
             />
           ))}
         </View>
@@ -227,9 +266,10 @@ const PageTreeItem = ({
       {/* Swipeable page item */}
       <Swipeable
         ref={swipeableRef}
-        renderRightActions={renderRightActions}
+        renderRightActions={shouldShowDelete ? renderRightActions : null}
         friction={2}
         overshootRight={false}
+        enabled={shouldShowDelete} // Only enable swipe if user can delete
       >
         <TouchableOpacity
           style={[
@@ -395,6 +435,12 @@ export default function HomeScreen() {
     error: null,
   });
 
+  // Section collapse state
+  const [sectionsCollapsed, setSectionsCollapsed] = useState({
+    shared: false,
+    private: false,
+  });
+
   // Add a ref to track the last refresh time
   const lastRefreshTime = useRef(0);
 
@@ -420,13 +466,54 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (pages && pages.length > 0) {
+      console.log(`🏠 Home: Processing ${pages.length} total pages`);
+
       // Separate shared and private pages
       const shared = pages.filter((page) => page.isSharedWithUser);
       const privatePagesFlat = pages.filter((page) => !page.isSharedWithUser);
 
+      console.log(
+        `🔗 Home: Found ${shared.length} shared pages:`,
+        shared.map((p) => ({
+          id: p.id.substring(0, 8),
+          title: p.title,
+          isSharedWithUser: p.isSharedWithUser,
+        }))
+      );
+      console.log(`🔒 Home: Found ${privatePagesFlat.length} private pages`);
+
       // Build hierarchical trees for both shared and private pages
-      const sharedTree = buildPageTree(shared);
+      const sharedTree = buildSharedPageTree(shared);
       const privateTree = buildPageTree(privatePagesFlat);
+
+      console.log(`🌳 Home: Shared tree has ${sharedTree.length} root items`);
+
+      // Debug: Log detailed info about shared tree
+      if (sharedTree.length > 0) {
+        console.log("🌳 Shared tree details:");
+        sharedTree.forEach((item, index) => {
+          console.log(
+            `  ${index + 1}. ${item.title} (ID: ${item.id.substring(0, 8)}...)`
+          );
+          console.log(`     parentId: ${item.parentId || "null"}`);
+          console.log(`     isSharedWithUser: ${item.isSharedWithUser}`);
+          console.log(`     children: ${item.children?.length || 0}`);
+        });
+      } else {
+        console.log("⚠️ Shared tree is empty!");
+        if (shared.length > 0) {
+          console.log(
+            "🔍 But we have shared pages. Checking their parentId values:"
+          );
+          shared.forEach((page, index) => {
+            console.log(
+              `  ${index + 1}. ${page.title} - parentId: ${
+                page.parentId || "null"
+              }`
+            );
+          });
+        }
+      }
 
       setSharedPages(shared);
       setSharedPageTree(sharedTree);
@@ -632,6 +719,14 @@ export default function HomeScreen() {
     }));
   };
 
+  // Handle toggling section collapse
+  const toggleSection = (sectionKey) => {
+    setSectionsCollapsed((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey],
+    }));
+  };
+
   // Render recent pages section
   const renderRecentPagesSection = () => {
     if (recentPages.length === 0) return null;
@@ -658,6 +753,128 @@ export default function HomeScreen() {
       </View>
     );
   };
+
+  // Render collapsible section component
+  const renderCollapsibleSection = (
+    title,
+    sectionKey,
+    data,
+    emptyMessage,
+    showCreateButtons = false
+  ) => (
+    <View style={styles.pagesSection}>
+      <TouchableOpacity
+        style={styles.sectionHeader}
+        onPress={() => toggleSection(sectionKey)}
+        activeOpacity={0.7}
+      >
+        <MaterialIcons
+          name={
+            sectionsCollapsed[sectionKey]
+              ? "keyboard-arrow-right"
+              : "keyboard-arrow-down"
+          }
+          size={20}
+          color={theme.secondaryText}
+          style={styles.sectionToggleIcon}
+        />
+        <Text
+          style={[
+            styles.sectionTitle,
+            { color: theme.secondaryText, marginBottom: 0 },
+          ]}
+        >
+          {title}
+        </Text>
+        <Text style={[styles.sectionCount, { color: theme.tertiaryText }]}>
+          ({data.length})
+        </Text>
+      </TouchableOpacity>
+
+      {!sectionsCollapsed[sectionKey] && (
+        <FlatList
+          data={data}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <PageTreeItem
+              page={item}
+              onPress={handlePagePress}
+              theme={theme || {}}
+              expanded={expandedIds[item.id] || false}
+              onToggleExpand={handleToggleExpand}
+              onAddSubpage={handleAddSubpage}
+              onDeletePage={handleDeletePage}
+              canDelete={true} // Enable delete functionality (will be checked per-page)
+              currentUserId={user?.id} // Pass current user ID for permission checks
+            />
+          )}
+          contentContainerStyle={styles.pagesList}
+          scrollEnabled={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons
+                name="document-outline"
+                size={48}
+                color={theme.tertiaryText}
+              />
+              <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
+                {emptyMessage}
+              </Text>
+              {showCreateButtons && user && (
+                <View style={styles.emptyStateButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.createFirstButton,
+                      { backgroundColor: theme.primary },
+                    ]}
+                    onPress={handleCreatePage}
+                  >
+                    <Text style={styles.createFirstButtonText}>
+                      Create blank page
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.createFirstButton,
+                      { backgroundColor: theme.secondary, marginTop: 12 },
+                    ]}
+                    onPress={async () => {
+                      try {
+                        await createTestPages();
+                        await loadPages();
+                        Toast.show({
+                          type: "success",
+                          text1: "Example Pages Created",
+                          text2:
+                            "Sample pages have been added to help you get started",
+                          position: "top",
+                          visibilityTime: 5000,
+                        });
+                      } catch (error) {
+                        console.error("Error creating test pages:", error);
+                        Toast.show({
+                          type: "error",
+                          text1: "Error",
+                          text2: "Failed to create example pages",
+                          position: "bottom",
+                          visibilityTime: 5000,
+                        });
+                      }
+                    }}
+                  >
+                    <Text style={styles.createFirstButtonText}>
+                      Create example pages
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          }
+        />
+      )}
+    </View>
+  );
 
   // Add useFocusEffect to refresh data when screen comes into focus
   useFocusEffect(
@@ -722,177 +939,39 @@ export default function HomeScreen() {
             },
           ]}
         >
-          {renderRecentPagesSection()}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 80 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={theme.primary}
+                colors={[theme.primary]}
+              />
+            }
+          >
+            {renderRecentPagesSection()}
 
-          <View style={styles.pagesSection}>
-            <Text style={[styles.sectionTitle, { color: theme.secondaryText }]}>
-              Private Pages
-            </Text>
+            {/* Shared Pages Section */}
+            {renderCollapsibleSection(
+              "Shared Pages",
+              "shared",
+              sharedPageTree,
+              "No shared pages found"
+            )}
 
-            <FlatList
-              data={privatePageTree}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <PageTreeItem
-                  page={item}
-                  onPress={handlePagePress}
-                  theme={theme || {}}
-                  expanded={expandedIds[item.id] || false}
-                  onToggleExpand={handleToggleExpand}
-                  onAddSubpage={handleAddSubpage}
-                  onDeletePage={handleDeletePage}
-                />
-              )}
-              contentContainerStyle={styles.pagesList}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  tintColor={theme.primary}
-                  colors={[theme.primary]}
-                />
-              }
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons
-                    name="document-outline"
-                    size={64}
-                    color={theme.tertiaryText}
-                  />
-                  <Text
-                    style={[styles.emptyText, { color: theme.secondaryText }]}
-                  >
-                    {user
-                      ? "No private pages found"
-                      : "Please sign in to view your notes"}
-                  </Text>
-                  {user && (
-                    <View style={styles.emptyStateButtons}>
-                      <TouchableOpacity
-                        style={[
-                          styles.createFirstButton,
-                          { backgroundColor: theme.primary },
-                        ]}
-                        onPress={handleCreatePage}
-                      >
-                        <Text style={styles.createFirstButtonText}>
-                          Create blank page
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[
-                          styles.createFirstButton,
-                          { backgroundColor: theme.secondary, marginTop: 12 },
-                        ]}
-                        onPress={async () => {
-                          try {
-                            await createTestPages();
-                            await loadPages();
-                            Toast.show({
-                              type: "success",
-                              text1: "Example Pages Created",
-                              text2:
-                                "Sample pages have been added to help you get started",
-                              position: "top",
-                              visibilityTime: 5000,
-                            });
-                          } catch (error) {
-                            console.error("Error creating test pages:", error);
-                            Toast.show({
-                              type: "error",
-                              text1: "Error",
-                              text2: "Failed to create example pages",
-                              position: "bottom",
-                              visibilityTime: 5000,
-                            });
-                          }
-                        }}
-                      >
-                        <Text style={styles.createFirstButtonText}>
-                          Create example pages
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-              }
-            />
-          </View>
-
-          {/* Shared Pages Section */}
-          <View style={styles.pagesSection}>
-            <Text style={[styles.sectionTitle, { color: theme.secondaryText }]}>
-              Shared Pages
-            </Text>
-            <FlatList
-              data={sharedPageTree}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <PageTreeItem
-                  page={item}
-                  onPress={handlePagePress}
-                  theme={theme || {}}
-                  expanded={expandedIds[item.id] || false}
-                  onToggleExpand={handleToggleExpand}
-                  onAddSubpage={handleAddSubpage}
-                  onDeletePage={handleDeletePage}
-                />
-              )}
-              contentContainerStyle={styles.pagesList}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons
-                    name="document-outline"
-                    size={64}
-                    color={theme.tertiaryText}
-                  />
-                  <Text
-                    style={[styles.emptyText, { color: theme.secondaryText }]}
-                  >
-                    No shared pages found
-                  </Text>
-                </View>
-              }
-            />
-          </View>
-
-          {/* Private Pages Section */}
-          <View style={styles.pagesSection}>
-            <Text style={[styles.sectionTitle, { color: theme.secondaryText }]}>
-              Private Pages
-            </Text>
-            <FlatList
-              data={privatePageTree}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <PageTreeItem
-                  page={item}
-                  onPress={handlePagePress}
-                  theme={theme || {}}
-                  expanded={expandedIds[item.id] || false}
-                  onToggleExpand={handleToggleExpand}
-                  onAddSubpage={handleAddSubpage}
-                  onDeletePage={handleDeletePage}
-                />
-              )}
-              contentContainerStyle={styles.pagesList}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons
-                    name="document-outline"
-                    size={64}
-                    color={theme.tertiaryText}
-                  />
-                  <Text
-                    style={[styles.emptyText, { color: theme.secondaryText }]}
-                  >
-                    No private pages found
-                  </Text>
-                </View>
-              }
-            />
-          </View>
+            {/* Private Pages Section */}
+            {renderCollapsibleSection(
+              "Private Pages",
+              "private",
+              privatePageTree,
+              user
+                ? "No private pages found"
+                : "Please sign in to view your notes",
+              true // show create buttons
+            )}
+          </ScrollView>
         </Animated.View>
       )}
 
@@ -945,8 +1024,26 @@ const styles = StyleSheet.create({
   // Recent pages section
   recentPagesSection: {
     paddingTop: 12,
-
-    paddingBottom: 16,
+    paddingBottom: 8,
+  },
+  // Pages section (for shared and private pages)
+  pagesSection: {
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  // Section header with toggle
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  sectionToggleIcon: {
+    marginRight: 8,
+  },
+  sectionCount: {
+    fontSize: 12,
+    marginLeft: 8,
   },
   recentPagesContainer: {
     paddingHorizontal: 16,
@@ -986,20 +1083,22 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: 4,
-    paddingLeft: 16,
+    marginTop: 0,
+    paddingLeft: 0,
+    flex: 1,
   },
   pagesList: {
-    paddingBottom: 80,
-    minHeight: "100%",
+    paddingBottom: 8,
+    flexGrow: 1,
   },
   pageItem: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 10,
+    padding: 6,
     paddingHorizontal: 16,
-    marginVertical: 2,
-    height: 46, // Increased height
+    marginVertical: 1,
+    height: 38,
   },
   pageItemContent: {
     flexDirection: "row",
@@ -1044,12 +1143,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingTop: 100,
+    paddingTop: 40,
+    paddingBottom: 20,
   },
   emptyText: {
-    fontSize: 16,
-    marginTop: 16,
-    marginBottom: 24,
+    fontSize: 14,
+    marginTop: 12,
+    marginBottom: 16,
   },
   createFirstButton: {
     paddingVertical: 10,

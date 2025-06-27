@@ -48,6 +48,7 @@ export const supabaseToLocalNote = (note) => {
     isDeleted: note.is_deleted,
     icon: note.icon || "📄", // Add icon field
     isSharedWithUser: note.isSharedWithUser || false, // Add shared status
+    user_id: note.user_id, // Add user_id field for permission checks
   };
 
   // console.log("Local note format:", JSON.stringify(localNote));
@@ -230,6 +231,74 @@ export const createNote = async (userId, noteData = {}) => {
   }
 };
 
+// Helper function to check if user can edit a note (owner or collaborator)
+const canUserEditNote = async (userId, noteId) => {
+  try {
+    console.log(
+      `Checking edit permissions for user ${userId} on note ${noteId}`
+    );
+
+    // Check if user is the owner
+    const { data: note, error: noteError } = await supabase
+      .from("notes")
+      .select("user_id")
+      .eq("id", noteId)
+      .single();
+
+    if (noteError) {
+      console.error("Error checking note ownership:", noteError);
+      return false;
+    }
+
+    console.log(`Note ${noteId} is owned by user ${note.user_id}`);
+
+    // If user is the owner, they can edit
+    if (note.user_id === userId) {
+      console.log(`✅ User ${userId} is the owner of note ${noteId}`);
+      return true;
+    }
+
+    // Check if user is a collaborator
+    console.log(
+      `🔍 Checking if user ${userId} is a collaborator on note ${noteId}`
+    );
+
+    const { data: collaboration, error: collabError } = await supabase
+      .from("page_collaborators")
+      .select("id, user_id, page_id, created_at")
+      .eq("page_id", noteId)
+      .eq("user_id", userId)
+      .single();
+
+    console.log("🔍 Collaboration query result:", {
+      collaboration,
+      collabError,
+      errorCode: collabError?.code,
+    });
+
+    if (collabError && collabError.code !== "PGRST116") {
+      // PGRST116 = no rows returned
+      console.error("❌ Error checking collaboration status:", collabError);
+      return false;
+    }
+
+    // If collaboration record exists, user can edit
+    if (collaboration) {
+      console.log(`✅ User ${userId} is a collaborator on note ${noteId}`);
+      console.log("✅ Collaboration details:", collaboration);
+      return true;
+    }
+
+    console.log(
+      `❌ User ${userId} does not have edit permissions for note ${noteId}`
+    );
+    return false;
+  } catch (error) {
+    console.error("Error checking edit permissions:", error);
+    return false;
+  }
+};
+
 // Update a note
 export const updateNote = async (userId, noteId, updates) => {
   try {
@@ -239,12 +308,25 @@ export const updateNote = async (userId, noteId, updates) => {
 
     console.log(`Updating note ${noteId} for user ${userId}`);
 
+    // Check if user has permission to edit this note
+    const canEdit = await canUserEditNote(userId, noteId);
+    if (!canEdit) {
+      console.error(
+        `User ${userId} does not have permission to edit note ${noteId}`
+      );
+      return {
+        success: false,
+        error: "Permission denied: You don't have edit access to this page",
+      };
+    }
+
+    console.log(`User ${userId} has permission to edit note ${noteId}`);
+
     // Get the current note from Supabase
     const { data, error: fetchError } = await supabase
       .from("notes")
       .select("*")
       .eq("id", noteId)
-
       .single();
 
     if (fetchError) {
@@ -337,21 +419,95 @@ export const updateNote = async (userId, noteId, updates) => {
       })
     );
 
-    // Convert to Supabase format
-    const supabaseNote = localToSupabaseNote(updatedNote, userId);
+    // Convert to Supabase format, but we need to handle user_id carefully for RLS
+    console.log("🔧 Preparing Supabase update data...");
 
-    // Save to Supabase
-    const { error: updateError } = await supabase
+    // For shared pages, we need to preserve the original owner's user_id
+    // but the RLS policies might prevent collaborators from updating
+    const supabaseNote = localToSupabaseNote(updatedNote, data.user_id);
+
+    // Remove user_id from the update if current user is not the owner
+    // This prevents RLS from blocking the update due to user_id mismatch
+    const isOwner = data.user_id === userId;
+    console.log(
+      `🔑 User ownership status: ${isOwner ? "OWNER" : "COLLABORATOR"}`
+    );
+
+    let updateData = { ...supabaseNote };
+    if (!isOwner) {
+      console.log("🚫 Removing user_id from update data for collaborator");
+      delete updateData.user_id; // Don't try to change ownership
+    }
+
+    // Log what we're about to save
+    console.log("💾 Saving to Supabase with data:", {
+      id: updateData.id,
+      title: updateData.title,
+      user_id: updateData.user_id || "PRESERVED",
+      originalOwnerId: data.user_id,
+      currentUserId: userId,
+      contentBlockCount: Array.isArray(updatedContent)
+        ? updatedContent.length
+        : 0,
+      isOwnerUpdate: isOwner,
+    });
+
+    // Save to Supabase - now that we have proper RLS policies, we can use direct updates
+    console.log("🔄 Attempting Supabase update...");
+
+    const { data: updateResult, error: updateError } = await supabase
       .from("notes")
-      .update(supabaseNote)
-      .eq("id", noteId);
+      .update({
+        title: updateData.title,
+        content: updateData.content,
+        icon: updateData.icon,
+        parent_id: updateData.parent_id,
+        updated_at: new Date().toISOString(),
+        // Note: We don't update user_id to preserve original ownership
+      })
+      .eq("id", noteId)
+      .select();
+
+    console.log("📋 Supabase update response:", {
+      updateResult,
+      updateError,
+      hasError: !!updateError,
+      resultCount: updateResult ? updateResult.length : 0,
+    });
 
     if (updateError) {
-      console.error("Supabase update error:", updateError);
+      console.error("❌ Supabase update error:", updateError);
+      console.error("💥 Update failed for note:", {
+        noteId: noteId,
+        userId: userId,
+        originalOwnerId: data.user_id,
+        updateAttemptedWith: {
+          id: updateData.id,
+          user_id: updateData.user_id || "PRESERVED",
+          title: updateData.title,
+        },
+        sqlState: updateError.code,
+        errorMessage: updateError.message,
+        errorDetails: updateError.details,
+      });
       throw updateError;
     }
 
-    console.log("Note successfully updated in Supabase");
+    if (!updateResult || updateResult.length === 0) {
+      console.error("⚠️ Supabase update succeeded but no rows were affected");
+      console.error(
+        "This might indicate RLS policy issues or the note doesn't exist"
+      );
+      return {
+        success: false,
+        error:
+          "Update completed but no rows were affected. This might be a permissions issue.",
+      };
+    }
+
+    console.log(
+      `✅ Note ${noteId} successfully updated in Supabase by user ${userId}`
+    );
     return { success: true, note: updatedNote };
   } catch (error) {
     console.error("Error updating note:", error);
@@ -468,10 +624,23 @@ export const fetchSupabaseNotesOnly = async (userId) => {
     ];
 
     console.log(
-      `Fetched ${ownedNotes?.length || 0} owned notes and ${
+      `📊 Fetched ${ownedNotes?.length || 0} owned notes and ${
         sharedNotes?.length || 0
       } shared notes from Supabase`
     );
+
+    // Debug: Log shared notes details
+    if (sharedNotes && sharedNotes.length > 0) {
+      console.log("🔗 Shared notes details:");
+      sharedNotes.forEach((note, index) => {
+        console.log(
+          `  ${index + 1}. ${note.title || "Untitled"} (ID: ${note.id.substring(
+            0,
+            8
+          )}...)`
+        );
+      });
+    }
 
     // Log the first few notes for debugging
     if (allNotes.length > 0) {
@@ -486,6 +655,13 @@ export const fetchSupabaseNotesOnly = async (userId) => {
 
     // Convert to local format
     const notes = allNotes.map((note) => supabaseToLocalNote(note));
+
+    console.log(`✅ Converted ${notes.length} notes to local format`);
+    console.log(
+      `🔗 Final notes with isSharedWithUser=true: ${
+        notes.filter((n) => n.isSharedWithUser).length
+      }`
+    );
 
     return { success: true, notes };
   } catch (error) {

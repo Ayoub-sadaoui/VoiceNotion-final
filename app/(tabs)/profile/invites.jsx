@@ -48,6 +48,11 @@ export default function InvitesScreen() {
       const { error } = await acceptInvite(inviteId);
       if (error) throw error;
       setInvites((prev) => prev.filter((inv) => inv.id !== inviteId));
+      Alert.alert(
+        "Invitation Accepted",
+        "You now have access to this page! You can find it in the Shared Pages section on the home screen.",
+        [{ text: "OK" }]
+      );
     } catch (err) {
       Alert.alert("Error", "Failed to accept invite");
       console.error(err);
@@ -57,11 +62,15 @@ export default function InvitesScreen() {
   const renderItem = ({ item }) => (
     <View style={[styles.inviteRow, { borderBottomColor: theme.border }]}>
       <View style={{ flex: 1 }}>
-        <Text style={{ color: theme.text }}>
-          Page: {item.page_id.substring(0, 8)}...
+        <Text style={{ color: theme.text, fontWeight: "500" }}>
+          {item.page_title || `Page: ${item.page_id.substring(0, 8)}...`}
         </Text>
         <Text style={{ color: theme.secondaryText, fontSize: 12 }}>
-          From: {item.inviter_email || item.inviter_id?.substring(0, 8)}
+          From:{" "}
+          {item.inviter_name ||
+            item.inviter_email ||
+            item.inviter_id?.substring(0, 8) ||
+            "Unknown"}
         </Text>
       </View>
       <TouchableOpacity

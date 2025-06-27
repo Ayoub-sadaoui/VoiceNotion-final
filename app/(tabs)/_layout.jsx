@@ -5,10 +5,14 @@ import { Platform, View, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import FloatingTabBar from "../../components/FloatingTabBar";
+import { useNavigationBarStyle } from "../../hooks/useNavigationBarStyle";
 
 export default function TabLayout() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+
+  // Ensure navigation bar matches theme
+  useNavigationBarStyle();
 
   const renderTabIcon = (name, color, focused) => {
     const iconName = focused ? name : `${name}-outline`;

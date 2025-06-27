@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from "react";
-import { useColorScheme } from "react-native";
+import { useColorScheme, Platform } from "react-native";
 
 // Define theme colors
 const lightTheme = {
@@ -84,6 +84,27 @@ export const ThemeProvider = ({ children }) => {
   useEffect(() => {
     setIsDark(systemTheme === "dark");
   }, [systemTheme]);
+
+  // Update navigation bar when theme changes
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      const configureNavigationBar = async () => {
+        try {
+          // Dynamically import the navigation bar module
+          const NavigationBar = await import("expo-navigation-bar");
+          await NavigationBar.setBackgroundColorAsync(theme.background);
+          await NavigationBar.setButtonStyleAsync(isDark ? "light" : "dark");
+        } catch (error) {
+          console.warn(
+            "Failed to configure navigation bar from theme context:",
+            error
+          );
+        }
+      };
+
+      configureNavigationBar();
+    }
+  }, [theme.background, isDark]);
 
   const toggleTheme = () => {
     setIsDark(!isDark);

@@ -16,10 +16,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../../utils/themeContext";
 import { useAuth } from "../../../contexts/AuthContext";
 import { signOut, getCurrentUser } from "../../../services/supabaseService";
-import {
-  fetchPendingInvites,
-  acceptInvite,
-} from "../../../services/collaborationService";
 import { syncPendingNotesWithSupabase } from "../../../services/noteService";
 import ScreenHeader from "../../../components/ScreenHeader";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -29,25 +25,9 @@ export default function ProfileScreen() {
   const { user, setUser } = useAuth();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const [pendingInvites, setPendingInvites] = useState([]);
-  const [invitesLoading, setInvitesLoading] = useState(false);
 
   // Log user metadata when profile screen loads
   useEffect(() => {
-    // Fetch pending collaboration invites
-    const loadInvites = async () => {
-      if (!user?.email) return;
-      try {
-        setInvitesLoading(true);
-        const { data, error } = await fetchPendingInvites(user.email);
-        if (!error && data) setPendingInvites(data);
-      } catch (err) {
-        console.error("Error fetching invites", err);
-      } finally {
-        setInvitesLoading(false);
-      }
-    };
-    loadInvites();
     if (user) {
       console.log(
         "Profile Screen - User metadata:",
@@ -275,62 +255,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Pending Invites Section */}
-        {invitesLoading ? (
-          <ActivityIndicator
-            size="small"
-            color={theme.primary}
-            style={{ margin: 16 }}
-          />
-        ) : (
-          pendingInvites.length > 0 && (
-            <View
-              style={[styles.invitesSection, { borderColor: theme.border }]}
-            >
-              {pendingInvites.map((inv) => (
-                <View
-                  key={inv.id}
-                  style={[
-                    styles.inviteRow,
-                    { borderBottomColor: theme.border },
-                  ]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: theme.text }}>
-                      Page: {inv.page_id.substring(0, 8)}...
-                    </Text>
-                    <Text style={{ color: theme.secondaryText, fontSize: 12 }}>
-                      From: {inv.inviter_email || inv.inviter_user_id}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[
-                      styles.acceptButton,
-                      { backgroundColor: theme.primary },
-                    ]}
-                    onPress={async () => {
-                      try {
-                        const { error } = await acceptInvite(inv.id);
-                        if (error) throw error;
-                        setPendingInvites((prev) =>
-                          prev.filter((i) => i.id !== inv.id)
-                        );
-                      } catch (err) {
-                        Alert.alert("Error", "Failed to accept invite");
-                        console.error(err);
-                      }
-                    }}
-                  >
-                    <Text style={{ color: "white", fontWeight: "600" }}>
-                      Accept
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )
-        )}
-
         <View style={styles.settingsSection}>
           {settingsItems.map((item) => (
             <TouchableOpacity
@@ -476,20 +400,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 14,
     marginBottom: 20,
-  },
-  invitesSection: {
-    marginVertical: 10,
-    paddingHorizontal: 16,
-  },
-  inviteRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  acceptButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
   },
 });

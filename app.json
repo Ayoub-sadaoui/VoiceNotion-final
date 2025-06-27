@@ -31,6 +31,11 @@
       },
       "package": "com.sayNote.app",
       "versionCode": 1,
+      "navigationBar": {
+        "visible": true,
+        "barStyle": "dark-content",
+        "backgroundColor": "#F3F8FF"
+      },
       "permissions": [
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
@@ -56,6 +61,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-navigation-bar",
       [
         "expo-secure-store",
         {
