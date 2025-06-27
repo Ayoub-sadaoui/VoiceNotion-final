@@ -19,18 +19,24 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
 
   // Map route names to icons and labels
   const getTabInfo = (routeName) => {
-    if (routeName === "home/index") {
+    console.log("Getting tab info for route:", routeName);
+
+    // More flexible route matching to handle any variations
+    if (routeName.includes("home") || routeName === "home/index") {
       return { iconName: "home", label: "Home" };
     }
-    if (routeName === "search/index") {
+    if (routeName.includes("search") || routeName === "search/index") {
       return { iconName: "search", label: "Search" };
     }
-    if (routeName === "profile/index") {
+    if (routeName.includes("profile") || routeName === "profile/index") {
       return { iconName: "person", label: "Profile" };
     }
-    if (routeName === "editor/index") {
+    if (routeName.includes("editor") || routeName === "editor/index") {
       return { iconName: "document-text", label: "Editor" };
     }
+
+    // Log unmatched routes for debugging
+    console.warn("Unknown route name:", routeName, "using default home");
     return { iconName: "home", label: "Home" }; // Default fallback
   };
 
@@ -55,14 +61,27 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
       >
         {state.routes.map((route, index) => {
           // Skip the Editor tab in the bottom bar
-          if (route.name === "editor/index") return null;
+          if (route.name === "editor/index" || route.name.includes("editor"))
+            return null;
 
           const { options } = descriptors[route.key];
           const { iconName, label } = getTabInfo(route.name);
           const isFocused = state.index === index;
 
+          // Debug logging for each tab
+          console.log(
+            `Tab ${index}: route=${route.name}, focused=${isFocused}, icon=${iconName}, label=${label}`
+          );
+
           const onPress = () => {
-            console.log("Tab pressed:", route.name);
+            console.log(
+              "Tab pressed:",
+              route.name,
+              "current index:",
+              state.index,
+              "target index:",
+              index
+            );
 
             const event = navigation.emit({
               type: "tabPress",
@@ -74,7 +93,20 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
 
               // Use router.push for more reliable navigation
               // Convert route.name (like "home/index") to the correct path format ("/(tabs)/home")
-              const path = `/(tabs)/${route.name.split("/")[0]}`;
+              let path;
+              if (route.name.includes("home")) {
+                path = "/(tabs)/home";
+              } else if (route.name.includes("search")) {
+                path = "/(tabs)/search";
+              } else if (route.name.includes("profile")) {
+                path = "/(tabs)/profile";
+              } else if (route.name.includes("editor")) {
+                path = "/(tabs)/editor";
+              } else {
+                // Fallback to extract the first part of the route name
+                path = `/(tabs)/${route.name.split("/")[0]}`;
+              }
+
               console.log("Navigating to path:", path);
               router.push(path);
             }

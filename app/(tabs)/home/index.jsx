@@ -1025,6 +1025,7 @@ const styles = StyleSheet.create({
   recentPagesSection: {
     paddingTop: 12,
     paddingBottom: 8,
+    paddingHorizontal: 8,
   },
   // Pages section (for shared and private pages)
   pagesSection: {
@@ -1035,7 +1036,8 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingRight: 16,
+    paddingLeft: 8,
     paddingVertical: 8,
   },
   sectionToggleIcon: {

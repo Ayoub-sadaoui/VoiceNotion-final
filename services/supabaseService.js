@@ -93,17 +93,45 @@ export const resetPassword = async (email) => {
 };
 
 export const getCurrentUser = async () => {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
+  try {
+    console.log("🔐 Getting current user...");
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (error) {
+      console.error("❌ Error getting current user:", error);
+      return null;
+    }
+
+    console.log("🔐 Got user:", !!user);
+    return user;
+  } catch (error) {
+    console.error("❌ Error getting current user:", error);
+    return null;
+  }
 };
 
 export const getSession = async () => {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  return session;
+  try {
+    console.log("🔐 Getting session...");
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
+
+    if (error) {
+      console.error("❌ Error getting session:", error);
+      return null;
+    }
+
+    console.log("🔐 Got session:", !!session);
+    return session;
+  } catch (error) {
+    console.error("❌ Error getting session:", error);
+    return null;
+  }
 };
 
 // Database functions for notes

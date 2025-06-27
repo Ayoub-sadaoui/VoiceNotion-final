@@ -7,7 +7,7 @@ import ProtectedRoute from "../../components/ProtectedRoute";
 import FloatingTabBar from "../../components/FloatingTabBar";
 import { useNavigationBarStyle } from "../../hooks/useNavigationBarStyle";
 
-export default function TabLayout() {
+function TabLayoutContent() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -93,6 +93,10 @@ export default function TabLayout() {
       </Tabs>
     </ProtectedRoute>
   );
+}
+
+export default function TabLayout() {
+  return <TabLayoutContent />;
 }
 
 const styles = StyleSheet.create({

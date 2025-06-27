@@ -16,6 +16,13 @@ export const useNavigationBarStyle = () => {
 
     const configureNavigationBar = async () => {
       try {
+        // Skip navigation bar configuration if edge-to-edge is enabled
+        // This prevents the warnings about setBackgroundColorAsync not being supported
+        console.log(
+          "🎨 Skipping navigation bar configuration (edge-to-edge mode)"
+        );
+        return;
+
         // Set navigation bar background color to match app theme
         await NavigationBar.setBackgroundColorAsync(theme.background);
 
