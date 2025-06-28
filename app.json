@@ -12,7 +12,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -24,12 +26,17 @@
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router"
+    ],
     "extra": {
       "eas": {
         "projectId": "4bee69d0-ddb3-4c0e-bea2-27c56ab22c27"
       }
     },
-    "owner": "ayoubsddd"
+    "owner": "ayoubsddd",
+    "ios": {
+      "bundleIdentifier": "com.sayNote.app"
+    }
   }
 }
