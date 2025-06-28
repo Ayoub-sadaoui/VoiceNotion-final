@@ -18,12 +18,18 @@ export const signInWithGoogleSupabase = async () => {
     console.log("🚀 Starting Google OAuth via Supabase...");
 
     // For Expo development, use the development server URL instead of custom scheme
-    const isDevelopment = __DEV__ || process.env.NODE_ENV === "development";
+    // Force production mode for built APK (not __DEV__)
+    const isDevelopment = __DEV__;
     const redirectUrl = isDevelopment
-      ? "http://192.168.100.3:8081/--/auth" // Expo development server
+      ? undefined // Let Supabase handle dev redirects automatically
       : "saynote://auth"; // Production custom scheme
 
     console.log("🔗 Using redirect URL:", redirectUrl);
+    console.log("🏗️ Environment:", {
+      isDevelopment,
+      __DEV__,
+      NODE_ENV: process.env.NODE_ENV,
+    });
 
     // Use Supabase's built-in OAuth which handles all redirects automatically
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -52,10 +58,13 @@ export const signInWithGoogleSupabase = async () => {
       console.log("🌐 Opening OAuth URL in browser:", data.url);
 
       // Use the same redirect URL for WebBrowser
-      const isDevelopment = __DEV__ || process.env.NODE_ENV === "development";
+      // Force production mode for built APK (not __DEV__)
+      const isDevelopment = __DEV__;
       const redirectUrl = isDevelopment
-        ? "http://192.168.100.3:8081/--/auth" // Expo development server
+        ? undefined // Let Expo handle dev redirects
         : "saynote://auth"; // Production custom scheme
+
+      console.log("🌐 WebBrowser redirect URL:", redirectUrl);
 
       // Open the OAuth URL in a web browser
       const result = await WebBrowser.openAuthSessionAsync(

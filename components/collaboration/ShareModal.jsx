@@ -14,8 +14,15 @@ import {
   SafeAreaView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import { useTheme } from "../../utils/themeContext";
-import { sendInvite, getPageUsers } from "../../services/collaborationService";
+import {
+  sendInvite,
+  getPageUsers,
+  publishPage,
+  unpublishPage,
+  getPagePublishStatus,
+} from "../../services/collaborationService";
 import { showSuccessToast, showErrorToast } from "../ToastManager";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -35,13 +42,31 @@ const ShareModal = ({ visible, onClose, pageId, pageTitle = "this page" }) => {
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [isPublished, setIsPublished] = useState(false);
+  const [publicUrl, setPublicUrl] = useState(null);
+  const [publishLoading, setPublishLoading] = useState(false);
 
-  // Fetch users with access to the page
+  // Fetch users with access to the page and publish status
   useEffect(() => {
     if (visible && pageId) {
       fetchPageUsers();
+      fetchPublishStatus();
     }
   }, [visible, pageId]);
+
+  const fetchPublishStatus = async () => {
+    try {
+      const { data, error } = await getPagePublishStatus(pageId);
+      if (error) {
+        console.error("Error fetching publish status:", error);
+        return;
+      }
+      setIsPublished(data.isPublished);
+      setPublicUrl(data.publicUrl);
+    } catch (err) {
+      console.error("Error fetching publish status:", err);
+    }
+  };
 
   const fetchPageUsers = async () => {
     try {
@@ -101,9 +126,40 @@ const ShareModal = ({ visible, onClose, pageId, pageTitle = "this page" }) => {
     }
   };
 
-  const handlePublish = () => {
-    // Placeholder for future publish functionality
-    showSuccessToast("Publish feature coming soon!");
+  const handlePublish = async () => {
+    if (isPublished) {
+      // Unpublish the page
+      try {
+        setPublishLoading(true);
+        const { error } = await unpublishPage(pageId);
+        if (error) throw error;
+
+        setIsPublished(false);
+        setPublicUrl(null);
+        showSuccessToast("Page unpublished successfully!");
+      } catch (err) {
+        console.error("Error unpublishing page:", err);
+        showErrorToast("Failed to unpublish page");
+      } finally {
+        setPublishLoading(false);
+      }
+    } else {
+      // Publish the page
+      try {
+        setPublishLoading(true);
+        const { data, error } = await publishPage(pageId);
+        if (error) throw error;
+
+        setIsPublished(true);
+        setPublicUrl(data.publicUrl);
+        showSuccessToast("Page published successfully!");
+      } catch (err) {
+        console.error("Error publishing page:", err);
+        showErrorToast("Failed to publish page");
+      } finally {
+        setPublishLoading(false);
+      }
+    }
   };
 
   // Check if email already has access
@@ -340,31 +396,77 @@ const ShareModal = ({ visible, onClose, pageId, pageTitle = "this page" }) => {
     <View style={styles.tabContent}>
       <View style={styles.publishContent}>
         <Ionicons
-          name="globe-outline"
+          name={isPublished ? "checkmark-circle" : "globe-outline"}
           size={48}
-          color={theme.secondaryText}
+          color={isPublished ? theme.success || "#4CAF50" : theme.secondaryText}
           style={styles.publishIcon}
         />
         <Text style={[styles.publishTitle, { color: theme.text }]}>
-          Publish to web
+          {isPublished ? "Page is published" : "Publish to web"}
         </Text>
         <Text
           style={[styles.publishDescription, { color: theme.secondaryText }]}
         >
-          Make {pageTitle} public and share it with anyone on the web.
+          {isPublished
+            ? `${pageTitle} is public and can be accessed by anyone with the link.`
+            : `Make ${pageTitle} public and share it with anyone on the web.`}
         </Text>
+
+        {isPublished && publicUrl && (
+          <TouchableOpacity
+            style={[styles.linkContainer, { backgroundColor: theme.surface }]}
+            onPress={async () => {
+              try {
+                await Clipboard.setStringAsync(publicUrl);
+                showSuccessToast("Link copied to clipboard!");
+              } catch (error) {
+                console.error("Failed to copy link:", error);
+                showErrorToast("Failed to copy link");
+              }
+            }}
+          >
+            <Text
+              style={[styles.linkText, { color: theme.primary }]}
+              numberOfLines={1}
+            >
+              {publicUrl}
+            </Text>
+            <Ionicons
+              name="copy-outline"
+              size={16}
+              color={theme.primary}
+              style={styles.copyIcon}
+            />
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
-          style={[styles.publishButton, { backgroundColor: theme.primary }]}
+          style={[
+            styles.publishButton,
+            {
+              backgroundColor: isPublished
+                ? theme.error || "#FF5252"
+                : theme.primary,
+              opacity: publishLoading ? 0.7 : 1,
+            },
+          ]}
           onPress={handlePublish}
+          disabled={publishLoading}
         >
-          <Text style={styles.publishButtonText}>Publish</Text>
+          {publishLoading ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Text style={styles.publishButtonText}>
+              {isPublished ? "Unpublish" : "Publish"}
+            </Text>
+          )}
         </TouchableOpacity>
 
-        <Text style={[styles.publishNote, { color: theme.secondaryText }]}>
-          This feature is coming soon! You'll be able to make pages public and
-          shareable via link.
-        </Text>
+        {!isPublished && (
+          <Text style={[styles.publishNote, { color: theme.secondaryText }]}>
+            Once published, anyone with the link will be able to view this page.
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -730,6 +832,23 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontStyle: "italic",
     paddingHorizontal: 20,
+  },
+  linkContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+    width: "100%",
+  },
+  linkText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  copyIcon: {
+    marginLeft: 8,
   },
 });
 

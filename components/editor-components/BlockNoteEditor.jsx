@@ -232,7 +232,7 @@ const BlockNoteEditor = forwardRef((props, ref) => {
     domAttributes: {
       editor: {
         class: "blocknote-editor",
-        style: "height: 100%; min-height: 150px; width: 100%;",
+        style: "height: 100%; min-height: 150px; width: 100vw;  ",
       },
       block: {
         style: "margin: 0.5em 0;",

@@ -4,6 +4,7 @@
 .blocknote-editor {
   height: 100%;
   width: 100%;
+
   padding: 16px 16px 400px 16px !important; /* Increased bottom padding to allow more scrolling space */
   overflow-y: auto !important; /* Force overflow to be auto */
 
@@ -361,4 +362,9 @@ body {
   padding: 0 !important; /* Remove any padding */
   inset-inline-start: 0 !important; /* For RTL support */
   inset-inline-end: 0 !important; /* For RTL support */
+}
+
+/* Ensure editor takes full width even when empty */
+.ProseMirror:empty {
+  width: 100%;
 }

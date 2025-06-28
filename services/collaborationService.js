@@ -60,8 +60,6 @@ export const sendInvite = async (pageId, email) => {
         page_id: pageId,
         invitee_email: email,
         inviter_id: user.id,
-        inviter_email: user.email,
-        inviter_name: user.user_metadata?.full_name || null,
         status: "pending", // ensure status so invite appears
       })
       .select()
@@ -330,5 +328,123 @@ export const getPageUsers = async (pageId) => {
   } catch (error) {
     console.error("Error fetching page users:", error);
     return { data: [], error };
+  }
+};
+
+/**
+ * Publish a page by setting is_published to true
+ * @param {string} pageId
+ * @returns {Promise<{data: any, error: any}>}
+ */
+export const publishPage = async (pageId) => {
+  if (!pageId) return { data: null, error: new Error("pageId is required") };
+
+  try {
+    // Get current user to verify ownership
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      return { data: null, error: userErr || new Error("Not authenticated") };
+    }
+
+    // Update the page to set is_published to true
+    const { data, error } = await supabase
+      .from("notes")
+      .update({ is_published: true })
+      .eq("id", pageId)
+      .eq("user_id", user.id) // Ensure only owner can publish
+      .select()
+      .single();
+
+    if (error) return { data: null, error };
+
+    // Generate the public URL
+    const baseUrl =
+      process.env.EXPO_PUBLIC_PAGE_BASE_URL ||
+      "https://voice-1.netlify.app/preview";
+    const publicUrl = `${baseUrl}/${pageId}`;
+
+    return {
+      data: {
+        ...data,
+        publicUrl,
+      },
+      error: null,
+    };
+  } catch (err) {
+    return { data: null, error: err };
+  }
+};
+
+/**
+ * Unpublish a page by setting is_published to false
+ * @param {string} pageId
+ * @returns {Promise<{data: any, error: any}>}
+ */
+export const unpublishPage = async (pageId) => {
+  if (!pageId) return { data: null, error: new Error("pageId is required") };
+
+  try {
+    // Get current user to verify ownership
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      return { data: null, error: userErr || new Error("Not authenticated") };
+    }
+
+    // Update the page to set is_published to false
+    const { data, error } = await supabase
+      .from("notes")
+      .update({ is_published: false })
+      .eq("id", pageId)
+      .eq("user_id", user.id) // Ensure only owner can unpublish
+      .select()
+      .single();
+
+    return { data, error };
+  } catch (err) {
+    return { data: null, error: err };
+  }
+};
+
+/**
+ * Check if a page is published
+ * @param {string} pageId
+ * @returns {Promise<{data: any, error: any}>}
+ */
+export const getPagePublishStatus = async (pageId) => {
+  if (!pageId) return { data: null, error: new Error("pageId is required") };
+
+  try {
+    const { data, error } = await supabase
+      .from("notes")
+      .select("is_published")
+      .eq("id", pageId)
+      .single();
+
+    if (error) return { data: null, error };
+
+    // Generate the public URL if published
+    let publicUrl = null;
+    if (data.is_published) {
+      const baseUrl =
+        process.env.EXPO_PUBLIC_PAGE_BASE_URL ||
+        "https://voice-1.netlify.app/preview";
+      publicUrl = `${baseUrl}/${pageId}`;
+    }
+
+    return {
+      data: {
+        isPublished: data.is_published,
+        publicUrl,
+      },
+      error: null,
+    };
+  } catch (err) {
+    return { data: null, error: err };
   }
 };

@@ -17,6 +17,7 @@ import {
 import { Link, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "../../contexts/AuthContext";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -26,6 +27,15 @@ export default function LoginScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState(null);
   const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useAuth();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      console.log("✅ User already authenticated, redirecting to home");
+      router.replace("/(tabs)/home");
+    }
+  }, [isAuthenticated, authLoading, router]);
 
   // Set up auth listener for OAuth completion
   useEffect(() => {
@@ -63,18 +73,25 @@ export default function LoginScreen() {
       setLoading(true);
       setError(null);
 
+      console.log("🔐 Attempting login...");
       const { data, error: signInError } = await signIn(email, password);
 
       if (signInError) {
+        console.error("❌ Login error:", signInError);
         setError(signInError.message);
         return;
       }
 
-      // Navigate to home screen on successful login
-      router.replace("/(tabs)/home");
+      console.log("✅ Login successful:", !!data?.session);
+
+      // Wait a moment for auth state to update, then navigate
+      setTimeout(() => {
+        console.log("🏠 Navigating to home after login");
+        router.replace("/(tabs)/home");
+      }, 500);
     } catch (err) {
+      console.error("❌ Login exception:", err);
       setError("An unexpected error occurred");
-      console.error("Login error:", err);
     } finally {
       setLoading(false);
     }

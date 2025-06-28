@@ -22,121 +22,100 @@ export const useAuth = () => {
   return context;
 };
 
-// Global flag to prevent multiple initializations
-let isInitializing = false;
-let initializationPromise = null;
-
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
     mounted.current = true;
 
-    // Single initialization function
     const initializeAuth = async () => {
-      // Prevent multiple initializations
-      if (isInitializing && initializationPromise) {
-        console.log("🔑 AuthContext: Already initializing, waiting...");
-        await initializationPromise;
-        return;
-      }
+      try {
+        console.log("🔑 AuthContext: Starting auth initialization...");
 
-      isInitializing = true;
-      console.log("🔑 AuthContext: Starting initialization...");
+        // Get current session immediately
+        const {
+          data: { session: currentSession },
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
-      initializationPromise = (async () => {
-        try {
-          // Simple, direct calls without complex timeout logic
-          const currentSession = await getSession();
-
-          if (!mounted.current) return;
-
-          console.log("🔑 AuthContext: Got session:", !!currentSession);
-          setSession(currentSession);
-
-          if (currentSession) {
-            console.log("🔑 AuthContext: Session found, getting user...");
-            const currentUser = await getCurrentUser();
-
-            if (!mounted.current) return;
-
-            console.log("🔑 AuthContext: Got user:", !!currentUser);
-            setUser(currentUser);
-          } else {
-            console.log("🔑 AuthContext: No session found");
-          }
-        } catch (error) {
-          console.error("❌ AuthContext: Error initializing auth:", error);
-        } finally {
-          if (mounted.current) {
-            console.log(
-              "🔑 AuthContext: Initialization complete, setting loading to false"
-            );
-            setLoading(false);
-          }
-          isInitializing = false;
-          initializationPromise = null;
+        if (sessionError) {
+          console.error("❌ AuthContext: Session error:", sessionError);
         }
-      })();
 
-      await initializationPromise;
+        if (!mounted.current) return;
+
+        console.log("🔑 AuthContext: Current session:", !!currentSession);
+        setSession(currentSession);
+
+        // If we have a session, get the user
+        if (currentSession?.user) {
+          console.log("🔑 AuthContext: Setting user from session");
+          setUser(currentSession.user);
+        }
+
+        // Mark as initialized and stop loading
+        setInitialized(true);
+        setLoading(false);
+        console.log("🔑 AuthContext: Initialization complete");
+      } catch (error) {
+        console.error("❌ AuthContext: Initialization error:", error);
+        if (mounted.current) {
+          setInitialized(true);
+          setLoading(false);
+        }
+      }
     };
 
-    // Start initialization
+    // Initialize auth
     initializeAuth();
 
-    // Set up auth subscription
+    // Set up auth state listener
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!mounted.current) return;
 
-      console.log("🔑 AuthContext: Auth state changed:", event, !!newSession);
+      console.log("🔑 AuthContext: Auth state change:", event, !!newSession);
 
-      try {
-        setSession(newSession);
+      setSession(newSession);
 
-        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-          console.log("🔑 AuthContext: Getting user for event:", event);
-          const newUser = await getCurrentUser();
-          if (mounted.current) {
-            console.log("🔑 AuthContext: Set user:", !!newUser);
-            setUser(newUser);
-          }
-        } else if (event === "SIGNED_OUT") {
-          if (mounted.current) {
-            console.log("🔑 AuthContext: User signed out");
-            setUser(null);
-          }
-        }
-      } catch (error) {
-        console.error("❌ AuthContext: Error in auth state change:", error);
+      if (event === "SIGNED_IN" && newSession?.user) {
+        console.log("🔑 AuthContext: User signed in");
+        setUser(newSession.user);
+      } else if (event === "SIGNED_OUT") {
+        console.log("🔑 AuthContext: User signed out");
+        setUser(null);
+      } else if (event === "TOKEN_REFRESHED" && newSession?.user) {
+        console.log("🔑 AuthContext: Token refreshed");
+        setUser(newSession.user);
       }
     });
 
     // Cleanup
     return () => {
       mounted.current = false;
-      if (subscription) subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, []);
 
-  // Emergency timeout - separate from initialization logic
+  // Fallback timeout - shorter and more reasonable
   useEffect(() => {
-    const emergencyTimeout = setTimeout(() => {
-      if (loading && mounted.current) {
-        console.warn(
-          "🚨 AuthContext: Emergency timeout - forcing loading to false after 8 seconds"
-        );
-        setLoading(false);
-      }
-    }, 8000);
+    if (!initialized) {
+      const timeout = setTimeout(() => {
+        if (!initialized && mounted.current) {
+          console.warn("🚨 AuthContext: Timeout reached, stopping loading");
+          setLoading(false);
+          setInitialized(true);
+        }
+      }, 3000); // Reduced to 3 seconds
 
-    return () => clearTimeout(emergencyTimeout);
-  }, [loading]);
+      return () => clearTimeout(timeout);
+    }
+  }, [initialized]);
 
   const value = {
     user,
@@ -156,7 +135,7 @@ export const AuthProvider = ({ children }) => {
           backgroundColor: "#f5f5f5",
         }}
       >
-        <Text style={{ fontSize: 18, marginBottom: 20 }}>Loading...</Text>
+        <Text style={{ fontSize: 18, marginBottom: 20 }}>sayNote</Text>
         <Text
           style={{
             fontSize: 14,
@@ -165,22 +144,26 @@ export const AuthProvider = ({ children }) => {
             marginBottom: 20,
           }}
         >
-          Initializing authentication...
+          Loading...
         </Text>
-        <TouchableOpacity
-          style={{
-            backgroundColor: "#007AFF",
-            paddingHorizontal: 20,
-            paddingVertical: 10,
-            borderRadius: 8,
-          }}
-          onPress={() => {
-            console.log("🚨 User manually skipped loading");
-            setLoading(false);
-          }}
-        >
-          <Text style={{ color: "white", fontSize: 16 }}>Skip Loading</Text>
-        </TouchableOpacity>
+        {/* Simplified skip button that appears after 2 seconds */}
+        {initialized === false && (
+          <TouchableOpacity
+            style={{
+              backgroundColor: "#007AFF",
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              borderRadius: 8,
+            }}
+            onPress={() => {
+              console.log("🚨 User manually skipped loading");
+              setLoading(false);
+              setInitialized(true);
+            }}
+          >
+            <Text style={{ color: "white", fontSize: 16 }}>Continue</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }

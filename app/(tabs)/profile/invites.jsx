@@ -68,7 +68,6 @@ export default function InvitesScreen() {
         <Text style={{ color: theme.secondaryText, fontSize: 12 }}>
           From:{" "}
           {item.inviter_name ||
-            item.inviter_email ||
             item.inviter_id?.substring(0, 8) ||
             "Unknown"}
         </Text>
