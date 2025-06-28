@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,11 +9,14 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { signIn, signInWithGoogle } from "../../services/supabaseService";
+import { signIn } from "../../services/supabaseService";
+import {
+  signInWithGoogleSupabase,
+  setupAuthListener,
+} from "../../services/googleOAuthSupabase";
 import { Link, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
-import { testGoogleOAuthConfig } from "../../utils/testSupabaseConfig";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -23,6 +26,32 @@ export default function LoginScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState(null);
   const router = useRouter();
+
+  // Set up auth listener for OAuth completion
+  useEffect(() => {
+    console.log("🔧 Setting up auth listener...");
+    const {
+      data: { subscription },
+    } = setupAuthListener((result) => {
+      if (result.data?.session) {
+        console.log(
+          "✅ OAuth completed via auth listener, redirecting to home"
+        );
+        setGoogleLoading(false);
+        setError(null); // Clear any errors
+        router.replace("/(tabs)/home");
+      } else if (result.error) {
+        console.error("❌ Auth listener error:", result.error);
+        setError(result.error.message);
+        setGoogleLoading(false);
+      }
+    });
+
+    return () => {
+      console.log("🔧 Cleaning up auth listener");
+      subscription?.unsubscribe();
+    };
+  }, [router]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -56,46 +85,45 @@ export default function LoginScreen() {
       setGoogleLoading(true);
       setError(null);
 
-      console.log("Initiating Google login...");
-      // First, test the configuration
-      const config = testGoogleOAuthConfig();
-      if (!config.supabaseConfigured) {
-        setError(
-          "Supabase is not properly configured. Check your environment variables."
-        );
-        return;
-      }
+      console.log("🚀 Starting Google OAuth with Supabase direct method...");
 
-      // This will open a browser window/tab for authentication
-      const { data, error: googleError } = await signInWithGoogle();
+      // Use Supabase direct OAuth - this bypasses Expo proxy issues
+      const result = await signInWithGoogleSupabase();
 
-      console.log("Google login response after browser flow:", {
-        data,
-        googleError,
+      console.log("📱 Google OAuth result:", {
+        success: !result.error,
+        hasSession: !!result.data?.session,
+        error: result.error?.message || null,
       });
 
-      if (googleError) {
-        console.error("Google login error details:", googleError);
-        setError(googleError.message || "Error with Google login");
+      if (result.error) {
+        console.error("❌ Google OAuth failed:", result.error);
+        setError(`Google OAuth failed: ${result.error.message}`);
+        setGoogleLoading(false);
         return;
       }
 
-      // Check if we have a session after the browser flow
-      if (data?.session) {
-        console.log("Session obtained after Google login, redirecting to home");
+      // Check if we got a session directly
+      if (result.data?.session) {
+        console.log("✅ Session obtained directly, redirecting to home");
+        setGoogleLoading(false);
+        setError(null);
         router.replace("/(tabs)/home");
       } else {
-        console.log("No session after Google login");
-        // The user might have cancelled the flow or something went wrong
-        setError("Google login was not completed. Please try again.");
+        console.log("⏳ OAuth completed, waiting for auth state change...");
+        // The auth listener will handle the completion and redirect
+        // Set a timeout to stop loading if nothing happens
+        setTimeout(() => {
+          if (googleLoading) {
+            console.log("⚠️ Timeout waiting for auth state change");
+            setGoogleLoading(false);
+            setError("Authentication timed out. Please try again.");
+          }
+        }, 10000); // 10 second timeout
       }
     } catch (err) {
-      console.error("Google login exception:", err);
-      setError(
-        "An error occurred with Google login: " +
-          (err.message || "Unknown error")
-      );
-    } finally {
+      console.error("❌ Google OAuth exception:", err);
+      setError(`Authentication error: ${err.message || "Unknown error"}`);
       setGoogleLoading(false);
     }
   };
@@ -337,6 +365,10 @@ const styles = StyleSheet.create({
     color: "#333",
     fontSize: 16,
     fontWeight: "500",
+  },
+  disabledButton: {
+    opacity: 0.5,
+    backgroundColor: "#f5f5f5",
   },
 
   footer: {
