@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Modal,
   View,
@@ -12,6 +12,7 @@ import {
   ScrollView,
   Image,
   SafeAreaView,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -22,9 +23,11 @@ import {
   publishPage,
   unpublishPage,
   getPagePublishStatus,
+  removePageAccess,
 } from "../../services/collaborationService";
 import { showSuccessToast, showErrorToast } from "../ToastManager";
 import { useAuth } from "../../contexts/AuthContext";
+import UserActionsMenu from "./UserActionsMenu";
 
 /**
  * Enhanced ShareModal with tabs for Share and Publish functionality
@@ -46,11 +49,20 @@ const ShareModal = ({ visible, onClose, pageId, pageTitle = "this page" }) => {
   const [publicUrl, setPublicUrl] = useState(null);
   const [publishLoading, setPublishLoading] = useState(false);
 
+  // Menu state
+  const [showMenu, setShowMenu] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+
   // Fetch users with access to the page and publish status
   useEffect(() => {
     if (visible && pageId) {
       fetchPageUsers();
       fetchPublishStatus();
+    } else if (!visible) {
+      // Reset menu state when modal closes
+      setShowMenu(false);
+      setSelectedUser(null);
     }
   }, [visible, pageId]);
 
@@ -160,6 +172,89 @@ const ShareModal = ({ visible, onClose, pageId, pageTitle = "this page" }) => {
         setPublishLoading(false);
       }
     }
+  };
+
+  // Handle showing user actions menu
+  const handleUserMenuPress = (user, event) => {
+    // Only show menu for non-owners and if current user is the page owner
+    const currentPageOwner = users.find((u) => u.role === "owner");
+    if (currentPageOwner?.id !== user?.id) {
+      // Not the page owner themselves
+      setSelectedUser(user);
+      // Get touch position for menu placement
+      event.persist();
+      const { pageY } = event.nativeEvent;
+      setMenuPosition({ x: 0, y: pageY - 50 }); // Position slightly above the touch
+      setShowMenu(true);
+    }
+  };
+
+  // Handle removing user access
+  const handleRemoveAccess = async (userToRemove) => {
+    console.log("🔥 handleRemoveAccess called with user:", userToRemove);
+
+    if (!userToRemove) {
+      console.error("❌ No user to remove");
+      return;
+    }
+
+    // Determine if it's a pending invite or active collaborator
+    const isInvite = userToRemove.status === "pending";
+    const identifier = isInvite ? userToRemove.email : userToRemove.id;
+    const type = isInvite ? "pending" : "collaborator";
+
+    console.log("🔍 Remove access details:", {
+      isInvite,
+      identifier,
+      type,
+      userToRemove,
+    });
+
+    Alert.alert(
+      "Remove Access",
+      `Are you sure you want to remove ${
+        isInvite
+          ? userToRemove.email
+          : userToRemove.full_name || userToRemove.email || "this user"
+      } from this page?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              console.log("🔥 Calling removePageAccess with:", {
+                pageId,
+                identifier,
+                type,
+              });
+
+              const { error } = await removePageAccess(
+                pageId,
+                identifier,
+                type
+              );
+
+              console.log("🔥 removePageAccess result:", { error });
+
+              if (error) {
+                console.error("❌ removePageAccess error:", error);
+                throw error;
+              }
+
+              showSuccessToast("Access removed successfully");
+              console.log("✅ Access removed, refreshing user list");
+              // Refresh the user list
+              await fetchPageUsers();
+            } catch (err) {
+              console.error("❌ Error removing access:", err);
+              showErrorToast("Failed to remove access");
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Check if email already has access
@@ -329,11 +424,19 @@ const ShareModal = ({ visible, onClose, pageId, pageTitle = "this page" }) => {
                   )}
                 </View>
               </View>
-              <TouchableOpacity style={styles.userActions}>
+              <TouchableOpacity
+                style={styles.userActions}
+                onPress={(event) => handleUserMenuPress(pageUser, event)}
+                disabled={pageUser.role === "owner"} // Disable for owner
+              >
                 <Ionicons
                   name="ellipsis-horizontal"
                   size={20}
-                  color={theme.secondaryText}
+                  color={
+                    pageUser.role === "owner"
+                      ? theme.disabled || theme.secondaryText
+                      : theme.secondaryText
+                  }
                 />
               </TouchableOpacity>
             </View>
@@ -503,7 +606,6 @@ const ShareModal = ({ visible, onClose, pageId, pageTitle = "this page" }) => {
                   </Text>
                 </TouchableOpacity>
               </View>
-
               {/* Tab Navigation */}
               <View style={styles.tabNavigation}>
                 <TouchableOpacity
@@ -555,16 +657,24 @@ const ShareModal = ({ visible, onClose, pageId, pageTitle = "this page" }) => {
                   </Text>
                 </TouchableOpacity>
               </View>
-
               {/* Tab Content */}
               <ScrollView
                 style={styles.contentContainer}
                 showsVerticalScrollIndicator={false}
               >
                 {activeTab === "share" ? renderShareTab() : renderPublishTab()}
-              </ScrollView>
+              </ScrollView>{" "}
             </View>
           </KeyboardAvoidingView>
+
+          {/* User Actions Menu */}
+          <UserActionsMenu
+            visible={showMenu}
+            onClose={() => setShowMenu(false)}
+            user={selectedUser}
+            onRemoveAccess={handleRemoveAccess}
+            position={menuPosition}
+          />
         </SafeAreaView>
       </View>
     </Modal>
@@ -572,9 +682,36 @@ const ShareModal = ({ visible, onClose, pageId, pageTitle = "this page" }) => {
 };
 
 const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  box: {
+    width: "100%",
+    borderRadius: 12,
+    padding: 20,
+    elevation: 4,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 12,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 12,
+  },
+  buttonsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
   fullScreenContainer: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)", // Semi-transparent overlay
+    backgroundColor: "rgba(0, 0, 0, 0.3)", // Lighter overlay for better visibility
   },
   safeArea: {
     flex: 1,
@@ -584,6 +721,10 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     flex: 1,
+    width: "100%",
+    marginTop: 60, // Add some margin from top for better appearance
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   header: {
     flexDirection: "row",

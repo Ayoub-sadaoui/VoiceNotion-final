@@ -782,6 +782,34 @@ const useEditorContent = (
     checkForMajorContentChange,
   ]);
 
+  /**
+   * Manually add current state to undo stack (used for voice commands and other major operations)
+   */
+  const addToUndoStack = useCallback(
+    (state = null) => {
+      if (!isUndoRedoOperation) {
+        const stateToAdd = state || editorContent;
+        if (stateToAdd) {
+          console.log("Manually adding state to undo stack");
+          setUndoStack((prev) => {
+            const newStack = [...prev, stateToAdd];
+            const maxStackSize = 50;
+            if (newStack.length > maxStackSize) {
+              return newStack.slice(-maxStackSize);
+            }
+            console.log(
+              `Manually added state to undo stack (now ${newStack.length} items)`
+            );
+            return newStack;
+          });
+          setRedoStack([]); // Clear redo stack when new action is performed
+          setLastMajorChange(stateToAdd);
+        }
+      }
+    },
+    [editorContent, isUndoRedoOperation]
+  );
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -838,6 +866,7 @@ const useEditorContent = (
     handleSave,
     lastMajorChange,
     setLastMajorChange,
+    addToUndoStack, // Expose the manual undo stack function
   };
 };
 

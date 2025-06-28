@@ -448,3 +448,143 @@ export const getPagePublishStatus = async (pageId) => {
     return { data: null, error: err };
   }
 };
+
+/**
+ * Remove access for a collaborator or pending invite
+ * @param {string} pageId - The page ID
+ * @param {string} userIdOrEmail - User ID for collaborators or email for pending invites
+ * @param {string} type - "collaborator" or "pending"
+ * @returns {Promise<{data: any, error: any}>}
+ */
+export const removePageAccess = async (
+  pageId,
+  userIdOrEmail,
+  type = "collaborator"
+) => {
+  console.log("🔥 removePageAccess called with:", {
+    pageId,
+    userIdOrEmail,
+    type,
+  });
+
+  if (!pageId || !userIdOrEmail) {
+    console.error("❌ Missing required parameters");
+    return {
+      data: null,
+      error: new Error("pageId and userIdOrEmail are required"),
+    };
+  }
+
+  try {
+    // Get current user to verify they are the owner
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      console.error("❌ Authentication error:", userErr);
+      return { data: null, error: userErr || new Error("Not authenticated") };
+    }
+
+    console.log("✅ Current user:", user.id);
+
+    // Verify user is the page owner
+    const { data: pageData, error: pageError } = await supabase
+      .from("notes")
+      .select("user_id")
+      .eq("id", pageId)
+      .single();
+
+    if (pageError) {
+      console.error("❌ Error fetching page data:", pageError);
+      return { data: null, error: pageError };
+    }
+
+    console.log("✅ Page data:", pageData);
+    console.log("✅ Page owner:", pageData.user_id);
+    console.log("✅ Current user:", user.id);
+    console.log("✅ Is owner?", pageData.user_id === user.id);
+
+    if (pageData.user_id !== user.id) {
+      console.error("❌ Not the page owner");
+      return {
+        data: null,
+        error: new Error("Only the page owner can remove access"),
+      };
+    }
+
+    if (type === "pending") {
+      console.log("🔥 Removing pending invite for email:", userIdOrEmail);
+
+      // First, check if the invite exists
+      const { data: existingInvite, error: checkError } = await supabase
+        .from("collaboration_invites")
+        .select("*")
+        .eq("page_id", pageId)
+        .eq("invitee_email", userIdOrEmail)
+        .eq("status", "pending");
+
+      console.log("🔍 Existing invites found:", existingInvite);
+
+      if (checkError) {
+        console.error("❌ Error checking existing invites:", checkError);
+      }
+
+      // Remove pending invite
+      const { data: deleteData, error: removeError } = await supabase
+        .from("collaboration_invites")
+        .delete()
+        .eq("page_id", pageId)
+        .eq("invitee_email", userIdOrEmail)
+        .eq("status", "pending")
+        .select(); // Add select to see what was deleted
+
+      console.log("🗑️ Delete result:", { deleteData, removeError });
+
+      if (removeError) {
+        console.error("❌ Error removing pending invite:", removeError);
+        return { data: null, error: removeError };
+      }
+
+      console.log("✅ Successfully removed pending invite");
+    } else {
+      console.log("🔥 Removing collaborator with user ID:", userIdOrEmail);
+
+      // First, check if the collaborator exists
+      const { data: existingCollab, error: checkError } = await supabase
+        .from("page_collaborators")
+        .select("*")
+        .eq("page_id", pageId)
+        .eq("user_id", userIdOrEmail);
+
+      console.log("🔍 Existing collaborators found:", existingCollab);
+
+      if (checkError) {
+        console.error("❌ Error checking existing collaborators:", checkError);
+      }
+
+      // Remove collaborator
+      const { data: deleteData, error: removeError } = await supabase
+        .from("page_collaborators")
+        .delete()
+        .eq("page_id", pageId)
+        .eq("user_id", userIdOrEmail)
+        .select(); // Add select to see what was deleted
+
+      console.log("🗑️ Delete result:", { deleteData, removeError });
+
+      if (removeError) {
+        console.error("❌ Error removing collaborator:", removeError);
+        return { data: null, error: removeError };
+      }
+
+      console.log("✅ Successfully removed collaborator");
+    }
+
+    console.log("✅ removePageAccess completed successfully");
+    return { data: { success: true }, error: null };
+  } catch (err) {
+    console.error("❌ Unexpected error in removePageAccess:", err);
+    return { data: null, error: err };
+  }
+};

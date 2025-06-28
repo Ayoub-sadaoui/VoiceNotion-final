@@ -64,6 +64,7 @@ const KeyboardToolbar = ({
     heading3: false,
     bulletList: false,
     numberedList: false,
+    todoList: false,
     quote: false,
     code: false,
   });
@@ -153,6 +154,12 @@ const KeyboardToolbar = ({
         case "numberedList":
           editor.updateBlock(cursorPosition.block, {
             type: "numberedListItem",
+          });
+          break;
+        case "todoList":
+          editor.updateBlock(cursorPosition.block, {
+            type: "checkListItem",
+            props: { checked: false },
           });
           break;
         case "quote":
@@ -255,6 +262,7 @@ const KeyboardToolbar = ({
           heading3: false,
           bulletList: false,
           numberedList: false,
+          todoList: false,
           quote: false,
           code: false,
         };
@@ -268,6 +276,8 @@ const KeyboardToolbar = ({
           newActiveFormats.bulletList = true;
         } else if (blockType === "numberedListItem") {
           newActiveFormats.numberedList = true;
+        } else if (blockType === "checkListItem") {
+          newActiveFormats.todoList = true;
         } else if (blockType === "quote") {
           newActiveFormats.quote = true;
         } else if (blockType === "code") {
@@ -383,6 +393,13 @@ const KeyboardToolbar = ({
             onPress={() => applyFormat("numberedList")}
             isActive={activeFormats.numberedList}
             tooltip="Numbered List"
+            themeColors={themeColors}
+          />
+          <ToolbarButton
+            iconType="todoList"
+            onPress={() => applyFormat("todoList")}
+            isActive={activeFormats.todoList}
+            tooltip="Todo List"
             themeColors={themeColors}
           />
         </View>
