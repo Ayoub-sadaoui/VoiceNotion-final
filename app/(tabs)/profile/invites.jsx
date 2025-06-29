@@ -11,7 +11,6 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../../utils/themeContext";
 import { useAuth } from "../../../contexts/AuthContext";
-import { useInviteNotifications } from "../../../contexts/InviteNotificationContext";
 import ScreenHeader from "../../../components/ScreenHeader";
 import {
   fetchPendingInvites,
@@ -23,7 +22,6 @@ export default function InvitesScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
-  const { refreshPendingCount } = useInviteNotifications();
 
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,8 +48,6 @@ export default function InvitesScreen() {
       const { error } = await acceptInvite(inviteId);
       if (error) throw error;
       setInvites((prev) => prev.filter((inv) => inv.id !== inviteId));
-      // Refresh the notification count in the tab bar
-      refreshPendingCount();
       Alert.alert(
         "Invitation Accepted",
         "You now have access to this page! You can find it in the Shared Pages section on the home screen.",

@@ -11,7 +11,6 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import ToastManager from "../components/ToastManager";
 import { AuthProvider } from "../contexts/AuthContext";
 import { ModalProvider, useModal } from "../contexts/ModalContext";
-import { InviteNotificationProvider } from "../contexts/InviteNotificationContext";
 import { useNavigationBarStyle } from "../hooks/useNavigationBarStyle";
 
 // Prevent the splash screen from auto-hiding
@@ -88,11 +87,9 @@ function RootLayoutNav() {
     <AuthProvider>
       <ThemeProvider>
         <ModalProvider>
-          <InviteNotificationProvider>
-            <ModalServiceInitializer />
-            <StackNavigator />
-            <ToastManager />
-          </InviteNotificationProvider>
+          <ModalServiceInitializer />
+          <StackNavigator />
+          <ToastManager />
         </ModalProvider>
       </ThemeProvider>
     </AuthProvider>

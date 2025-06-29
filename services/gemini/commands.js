@@ -789,10 +789,25 @@ ${contentForPrompt}
           throw new Error("No valid commands found in Gemini response");
         }
 
-        // Extract the first command from the array. Gemini is instructed to return a JSON array.
+        console.log(
+          `Successfully parsed ${parsedCommands.length} commands from Gemini:`,
+          parsedCommands
+        );
+
+        // If there are multiple commands, return them as a batch
+        if (parsedCommands.length > 1) {
+          return {
+            success: true,
+            action: "BATCH_COMMANDS",
+            commands: parsedCommands,
+            rawTranscription: voiceCommand,
+          };
+        }
+
+        // Extract the single command from the array
         const command = parsedCommands[0];
 
-        console.log("Successfully parsed command from Gemini:", command);
+        console.log("Successfully parsed single command from Gemini:", command);
         // Return a structured success object that the rest of the app expects
         return {
           success: true,

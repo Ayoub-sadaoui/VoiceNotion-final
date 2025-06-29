@@ -4,18 +4,6 @@ import geminiService from "../services/geminiService";
 import { validateBlockFormat } from "./blockOperations";
 
 /**
- * Helper function to get ordinal suffix for numbers (1st, 2nd, 3rd, etc.)
- */
-const getOrdinalSuffix = (num) => {
-  const j = num % 10;
-  const k = num % 100;
-  if (j === 1 && k !== 11) return "st";
-  if (j === 2 && k !== 12) return "nd";
-  if (j === 3 && k !== 13) return "rd";
-  return "th";
-};
-
-/**
  * Create a paragraph block with the given text
  * @param {string} text - Text for the paragraph
  * @returns {Object} - Block object
@@ -308,34 +296,11 @@ export const handleDeleteBlockCommand = async (
         }
       }
 
-      // Show success message with context-aware text
-      const deletedCount = commandResult.targetBlockIds.length;
-      let successMessage = "Block deleted successfully";
-
-      if (commandResult.action === "DELETE_AI_ANSWER") {
-        if (
-          commandResult.targetStrategy === "ordinal" &&
-          commandResult.targetOrdinal
-        ) {
-          successMessage = `${commandResult.targetOrdinal}${getOrdinalSuffix(
-            commandResult.targetOrdinal
-          )} AI answer deleted`;
-        } else if (
-          commandResult.targetStrategy === "description" &&
-          commandResult.targetDescription
-        ) {
-          successMessage = `AI answer containing "${commandResult.targetDescription}" deleted`;
-        } else {
-          successMessage = "AI answer deleted successfully";
-        }
-      } else if (deletedCount > 1) {
-        successMessage = `${deletedCount} blocks deleted successfully`;
-      }
-
+      // Show success message
       Toast.show({
         type: "success",
         text1: "Success",
-        text2: successMessage,
+        text2: "Block deleted successfully",
         visibilityTime: 2000,
       });
     }
@@ -659,43 +624,10 @@ export const handleApplyFormattingCommand = async (
     let targetText = commandResult.targetText;
     let targetBlockIds = commandResult.targetBlockIds;
     let formatType = commandResult.formattingType?.toLowerCase();
-    let colorValue = commandResult.colorValue;
-    let targetPosition = commandResult.targetPosition;
-    let targetBlockType = commandResult.targetBlockType;
 
-    // Handle position-based targeting (first, last, etc.)
-    if (targetPosition && !targetBlockIds) {
-      if (targetPosition === "last") {
-        // Filter by block type if specified
-        const filteredBlocks = targetBlockType
-          ? currentContent.filter((block) => block.type === targetBlockType)
-          : currentContent;
-
-        if (filteredBlocks.length > 0) {
-          const lastBlock = filteredBlocks[filteredBlocks.length - 1];
-          targetBlockIds = [lastBlock.id];
-        }
-      } else if (targetPosition === "first") {
-        const filteredBlocks = targetBlockType
-          ? currentContent.filter((block) => block.type === targetBlockType)
-          : currentContent;
-
-        if (filteredBlocks.length > 0) {
-          const firstBlock = filteredBlocks[0];
-          targetBlockIds = [firstBlock.id];
-        }
-      }
-    }
-
-    // Handle "all" targeting for block types
-    if (targetBlockType && !targetBlockIds && !targetPosition) {
-      targetBlockIds = currentContent
-        .filter((block) => block.type === targetBlockType)
-        .map((block) => block.id);
-    }
-
-    // If no specific target is provided, format the last block
+    // Handle "last paragraph" type commands
     if (!targetText && !targetBlockIds && formatType) {
+      // If no specific target is provided, format the last block
       const lastBlock = currentContent[currentContent.length - 1];
       targetBlockIds = [lastBlock.id];
     }
@@ -724,35 +656,13 @@ export const handleApplyFormattingCommand = async (
                 case "underline":
                   item.styles.underline = true;
                   break;
-                case "strikethrough":
-                  item.styles.strike = true;
-                  break;
-                case "color":
-                  if (colorValue) {
-                    item.styles.textColor = colorValue;
-                  }
-                  break;
-                case "background":
-                case "background_color":
-                  if (colorValue) {
-                    item.styles.backgroundColor = colorValue;
-                  }
-                  break;
                 case "remove_formatting":
-                case "clear_formatting":
                   item.styles = {};
                   break;
               }
               success = true;
             }
           });
-        }
-
-        // Apply block-level formatting if needed
-        if (formatType === "background" || formatType === "background_color") {
-          if (colorValue && block.props) {
-            block.props.backgroundColor = colorValue;
-          }
         }
       }
     }

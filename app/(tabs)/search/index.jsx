@@ -13,6 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useTheme } from "../../../utils/themeContext";
+import { useAuth } from "../../../contexts/AuthContext";
 import ScreenHeader from "../../../components/ScreenHeader";
 import FilterChips from "../../../components/FilterChips";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -25,6 +26,7 @@ const RECENT_SEARCHES_KEY = "sayNote_recent_searches";
 
 export default function SearchScreen() {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
@@ -32,8 +34,8 @@ export default function SearchScreen() {
   const [recentSearches, setRecentSearches] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Get page storage functionality
-  const { pages, loading, loadPages } = usePageStorage();
+  // Get page storage functionality with user ID
+  const { pages, loading, loadPages } = usePageStorage(user?.id);
 
   // Load recent searches from storage on component mount
   useEffect(() => {
@@ -93,14 +95,22 @@ export default function SearchScreen() {
       setIsSearching(true);
 
       try {
+        console.log("🔍 Starting search for:", searchQuery);
+        console.log("📄 Available pages:", pages.length);
+
         // Make sure we have the latest pages
         // Only load pages if we don't already have them
         if (pages.length === 0) {
+          console.log("📥 Loading pages...");
           await loadPages();
         }
 
         const query = searchQuery.toLowerCase().trim();
+        console.log("🔍 Processed query:", query);
+
         const results = pages.filter((page) => {
+          console.log("📖 Checking page:", page.title);
+
           // Parse content JSON if it exists
           let pageContent = "";
           try {
@@ -112,17 +122,27 @@ export default function SearchScreen() {
             console.error("Error parsing page content:", error);
           }
 
+          console.log("📝 Page content length:", pageContent.length);
+
           // Search based on active filter
           if (activeFilter === "all" || activeFilter === "title") {
-            if (page.title?.toLowerCase().includes(query)) return true;
+            if (page.title?.toLowerCase().includes(query)) {
+              console.log("✅ Title match found:", page.title);
+              return true;
+            }
           }
 
           if (activeFilter === "all" || activeFilter === "content") {
-            if (pageContent.toLowerCase().includes(query)) return true;
+            if (pageContent.toLowerCase().includes(query)) {
+              console.log("✅ Content match found in:", page.title);
+              return true;
+            }
           }
 
           return false;
         });
+
+        console.log("🎯 Search results found:", results.length);
 
         // Sort results by relevance and recency
         const sortedResults = results.sort((a, b) => {
@@ -394,6 +414,28 @@ export default function SearchScreen() {
           <ActivityIndicator size="large" color={theme.primary} />
           <Text style={[styles.loadingText, { color: theme.secondaryText }]}>
             Loading notes...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show message if user is not authenticated
+  if (!user) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: theme.background }]}
+      >
+        <ScreenHeader title="Search" rightElement={headerRight} />
+        <View style={styles.emptyContainer}>
+          <Ionicons
+            name="person-outline"
+            size={48}
+            color={theme.tertiaryText}
+            style={styles.emptyIcon}
+          />
+          <Text style={[styles.emptyText, { color: theme.secondaryText }]}>
+            Please sign in to search your notes
           </Text>
         </View>
       </SafeAreaView>

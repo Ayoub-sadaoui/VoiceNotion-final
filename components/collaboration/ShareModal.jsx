@@ -663,18 +663,18 @@ const ShareModal = ({ visible, onClose, pageId, pageTitle = "this page" }) => {
                 showsVerticalScrollIndicator={false}
               >
                 {activeTab === "share" ? renderShareTab() : renderPublishTab()}
-              </ScrollView>{" "}
+              </ScrollView>
             </View>
           </KeyboardAvoidingView>
 
           {/* User Actions Menu */}
-          <UserActionsMenu
+          {/*<UserActionsMenu
             visible={showMenu}
             onClose={() => setShowMenu(false)}
             user={selectedUser}
             onRemoveAccess={handleRemoveAccess}
             position={menuPosition}
-          />
+          />*/}
         </SafeAreaView>
       </View>
     </Modal>

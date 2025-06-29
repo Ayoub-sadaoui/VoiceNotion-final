@@ -109,6 +109,7 @@ export default function SignupScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Email"
+                placeholderTextColor="#999"
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
@@ -126,6 +127,7 @@ export default function SignupScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Password"
+                placeholderTextColor="#999"
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -149,6 +151,7 @@ export default function SignupScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Confirm Password"
+                placeholderTextColor="#999"
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showConfirmPassword}
@@ -257,6 +260,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: "100%",
     fontSize: 16,
+    color: "#333",
   },
   button: {
     backgroundColor: "#4285F4",

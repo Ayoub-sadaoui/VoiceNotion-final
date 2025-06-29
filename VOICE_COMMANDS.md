@@ -100,31 +100,7 @@ Try saying:
 "Change the color of all blocks to green"
 "Make all headings level 2"
 
-## Keyboard Toolbar Features
-
-The keyboard toolbar provides quick access to formatting options when typing:
-
-### Block Types Available:
-
-- **Headings**: H1, H2, H3 buttons for different heading levels
-- **Lists**: Bullet lists, numbered lists, and **todo lists** (checkboxes)
-- **Special Blocks**: Quote blocks and code blocks
-- **Text Formatting**: Bold, italic, underline
-- **Content**: Image upload, AI image generation, page creation
-
-### Todo List Button
-
-The **Todo List** button (📝) transforms the current block into a checklist item with an interactive checkbox. Perfect for creating task lists and tracking progress.
-
-## AI Answer Deletion Commands
-
-You can now delete AI-generated responses using voice commands:
-
-Try saying:
-
-- "Delete the last AI answer"
-- "Delete the second AI response"
-- "Delete the AI answer about [topic]"
-- "Remove the AI response that contains [specific text]"
-
-This helps you clean up and refine your notes by removing unwanted AI-generated content.
+the delete all voice command is still not fucking working , the delete the last block command is working
+why the fuck it is not working !!!!! what is the fucking problem !!!!! where the issue happening
+also when I say delete the block with this contnetn the heading of ...., it is also not working
+plese can you fix the fucking delete command and make sure it works with diffrent command and make sure that the gemini api is recognizing the wich blok or block delete form the user input and also make sure that we succefully apply the gemini response

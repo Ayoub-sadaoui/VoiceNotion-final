@@ -595,165 +595,208 @@ const NoteScreen = () => {
           visibilityTime: 3000,
         });
       } else {
-        // Handle the command
-        console.log(`Handling command: ${commandResult.action}`);
-        try {
-          switch (commandResult.action) {
-            case "INSERT_CONTENT":
-              await handleInsertContentCommand(
-                commandResult,
-                insertTranscriptionDirectly,
-                setIsSaving
-              );
-              break;
+        // Handle batch commands (multiple commands from Gemini)
+        if (
+          commandResult.action === "BATCH_COMMANDS" &&
+          commandResult.commands
+        ) {
+          console.log(
+            `Processing ${commandResult.commands.length} batch commands`
+          );
 
-            case "DELETE_ALL":
-              await handleDeleteAllCommand(
-                commandResult,
-                editorContent,
-                initialContent,
-                editorRef,
-                setEditorContent,
-                setInitialContent,
-                currentPage,
-                storageSavePage,
-                setCurrentPage,
-                setForceRefresh,
-                setIsSaving
-              );
-              break;
+          for (let i = 0; i < commandResult.commands.length; i++) {
+            const command = commandResult.commands[i];
+            console.log(
+              `Executing batch command ${i + 1}/${
+                commandResult.commands.length
+              }:`,
+              command.action
+            );
 
-            case "DELETE_BLOCK":
-              await handleDeleteBlockCommand(
-                commandResult,
-                editorContent,
-                initialContent,
-                editorRef,
-                setEditorContent,
-                setInitialContent,
-                currentPage,
-                storageSavePage,
-                setCurrentPage,
-                setForceRefresh,
-                setIsSaving
-              );
-              break;
+            // Create a command result object for each command
+            const singleCommandResult = {
+              success: true,
+              rawTranscription: commandResult.rawTranscription,
+              ...command,
+            };
 
-            case "CREATE_PAGE":
-              await handleCreatePageCommand(
-                commandResult,
-                currentPage,
-                createNewPage,
-                handleSave,
-                storageSavePage,
-                insertTranscriptionDirectly,
-                loadNestedPages,
-                router,
-                setIsSaving
-              );
-              break;
-
-            case "GENERATE_IMAGE":
-              await handleGenerateImageCommand(
-                commandResult,
-                insertTranscriptionDirectly,
-                setIsSaving
-              );
-              break;
-
-            case "INSERT_AI_ANSWER":
-            case "INSERT_AI_SUMMARY":
-            case "INSERT_AI_COMPLETION":
-            case "INSERT_AI_REWRITE":
-            case "INSERT_AI_IMAGE":
-              await handleAIContentCommand(
-                commandResult,
-                insertTranscriptionDirectly
-              );
-              break;
-
-            case "APPLY_FORMATTING":
-              await handleApplyFormattingCommand(
-                commandResult,
-                editorContent,
-                initialContent,
-                editorRef,
-                setEditorContent,
-                setInitialContent,
-                currentPage,
-                storageSavePage,
-                setCurrentPage,
-                setForceRefresh,
-                setIsSaving
-              );
-              break;
-
-            case "MODIFY_BLOCK":
-              await handleModifyBlockCommand(
-                commandResult,
-                editorContent,
-                initialContent,
-                editorRef,
-                setEditorContent,
-                setInitialContent,
-                currentPage,
-                storageSavePage,
-                setCurrentPage,
-                setForceRefresh,
-                setIsSaving
-              );
-              break;
-
-            case "DELETE_ALL":
-              await handleDeleteAllCommand(
-                commandResult,
-                editorContent,
-                initialContent,
-                editorRef,
-                setEditorContent,
-                setInitialContent,
-                currentPage,
-                storageSavePage,
-                setCurrentPage,
-                setForceRefresh,
-                setIsSaving
-              );
-              break;
-
-            case "UNDO":
-              await handleUndoCommand(
-                commandResult,
-                handleUndoWrapper,
-                undoStack
-              );
-              break;
-
-            case "REDO":
-              await handleRedoCommand(
-                commandResult,
-                handleRedoWrapper,
-                redoStack
-              );
-              break;
-
-            default:
-              console.warn("Unhandled command action:", commandResult.action);
-              Toast.show({
-                type: "info",
-                text1: "Command Not Supported",
-                text2: "This voice command is not supported yet",
-                visibilityTime: 2000,
-              });
+            // Process each command individually
+            await handleSingleCommand(singleCommandResult);
           }
-        } catch (error) {
-          console.error("Error processing command:", error);
+
+          // Show success message for batch completion
           Toast.show({
-            type: "error",
-            text1: "Command Error",
-            text2: "Failed to process voice command",
+            type: "success",
+            text1: "Commands Completed",
+            text2: `Successfully executed ${commandResult.commands.length} commands`,
             visibilityTime: 2000,
           });
+          return;
         }
+
+        // Handle single command
+        await handleSingleCommand(commandResult);
+      }
+    },
+    [
+      editorContent,
+      initialContent,
+      setEditorContent,
+      setInitialContent,
+      setRecentTranscription,
+      setForceRefresh,
+      editorRef,
+      currentPage,
+      storageSavePage,
+      setCurrentPage,
+      setIsSaving,
+    ]
+  );
+
+  // Helper function to handle a single command
+  const handleSingleCommand = useCallback(
+    async (commandResult) => {
+      console.log(`Handling command: ${commandResult.action}`);
+      try {
+        switch (commandResult.action) {
+          case "INSERT_CONTENT":
+            await handleInsertContentCommand(
+              commandResult,
+              insertTranscriptionDirectly,
+              setIsSaving
+            );
+            break;
+
+          case "DELETE_ALL":
+            await handleDeleteAllCommand(
+              commandResult,
+              editorContent,
+              initialContent,
+              editorRef,
+              setEditorContent,
+              setInitialContent,
+              currentPage,
+              storageSavePage,
+              setCurrentPage,
+              setForceRefresh,
+              setIsSaving
+            );
+            break;
+
+          case "DELETE_BLOCK":
+            await handleDeleteBlockCommand(
+              commandResult,
+              editorContent,
+              initialContent,
+              editorRef,
+              setEditorContent,
+              setInitialContent,
+              currentPage,
+              storageSavePage,
+              setCurrentPage,
+              setForceRefresh,
+              setIsSaving
+            );
+            break;
+
+          case "CREATE_PAGE":
+            await handleCreatePageCommand(
+              commandResult,
+              currentPage,
+              createNewPage,
+              handleSave,
+              storageSavePage,
+              insertTranscriptionDirectly,
+              loadNestedPages,
+              router,
+              setIsSaving
+            );
+            break;
+
+          case "GENERATE_IMAGE":
+            await handleGenerateImageCommand(
+              commandResult,
+              insertTranscriptionDirectly,
+              setIsSaving
+            );
+            break;
+
+          case "INSERT_AI_ANSWER":
+          case "INSERT_AI_SUMMARY":
+          case "INSERT_AI_COMPLETION":
+          case "INSERT_AI_REWRITE":
+          case "INSERT_AI_IMAGE":
+            await handleAIContentCommand(
+              commandResult,
+              insertTranscriptionDirectly
+            );
+            break;
+
+          case "APPLY_FORMATTING":
+            await handleApplyFormattingCommand(
+              commandResult,
+              editorContent,
+              initialContent,
+              editorRef,
+              setEditorContent,
+              setInitialContent,
+              currentPage,
+              storageSavePage,
+              setCurrentPage,
+              setForceRefresh,
+              setIsSaving
+            );
+            break;
+
+          case "MODIFY_BLOCK":
+            await handleModifyBlockCommand(
+              commandResult,
+              editorContent,
+              initialContent,
+              editorRef,
+              setEditorContent,
+              setInitialContent,
+              currentPage,
+              storageSavePage,
+              setCurrentPage,
+              setForceRefresh,
+              setIsSaving
+            );
+            break;
+
+          case "UNDO":
+            await handleUndoCommand(
+              commandResult,
+              handleUndoWrapper,
+              undoStack
+            );
+            break;
+
+          case "REDO":
+            await handleRedoCommand(
+              commandResult,
+              handleRedoWrapper,
+              redoStack
+            );
+            break;
+
+          default:
+            console.warn("Unhandled command action:", commandResult.action);
+            Toast.show({
+              type: "info",
+              text1: "Command Not Supported",
+              text2: "This voice command is not supported yet",
+              visibilityTime: 2000,
+            });
+        }
+      } catch (error) {
+        console.error("Error processing command:", error);
+        Toast.show({
+          type: "error",
+          text1: "Command Error",
+          text2: "Failed to process voice command",
+          visibilityTime: 2000,
+        });
       }
     },
     [

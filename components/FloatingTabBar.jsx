@@ -4,14 +4,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../utils/themeContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useInviteNotifications } from "../contexts/InviteNotificationContext";
-import NotificationBadge from "./NotificationBadge";
 
 const FloatingTabBar = ({ state, descriptors, navigation }) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { pendingCount } = useInviteNotifications();
 
   // Log available routes for debugging
   console.log(
@@ -128,18 +125,11 @@ const FloatingTabBar = ({ state, descriptors, navigation }) => {
               ]}
             >
               <View style={styles.tabContent}>
-                <View style={styles.iconContainer}>
-                  <Ionicons
-                    name={isFocused ? iconName : `${iconName}-outline`}
-                    size={22}
-                    color={isFocused ? theme.primary : theme.secondaryText}
-                  />
-                  {/* Show notification badge only on profile tab */}
-                  {(route.name.includes("profile") ||
-                    iconName === "person") && (
-                    <NotificationBadge count={pendingCount} />
-                  )}
-                </View>
+                <Ionicons
+                  name={isFocused ? iconName : `${iconName}-outline`}
+                  size={22}
+                  color={isFocused ? theme.primary : theme.secondaryText}
+                />
                 {isFocused && (
                   <Text style={[styles.tabText, { color: theme.primary }]}>
                     {label}
@@ -192,9 +182,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 12,
-  },
-  iconContainer: {
-    position: "relative",
   },
   tabText: {
     fontSize: 14,
